@@ -5,6 +5,7 @@ solc = '0.8.20'
 src = "src"
 out = "out"
 libs = ["lib"]
+viaIR = true
 remappings = [
     'forge-std/=lib/forge-std/src',
     'solady/=lib/solady/src/',

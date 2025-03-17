@@ -1,0 +1,378 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.17;
+
+import "./interfaces/IArrows.sol";
+import "./interfaces/IArrowsEdition.sol";
+import "./libraries/ArrowsArt.sol";
+import "./libraries/ArrowsMetadata.sol";
+import "./libraries/Utilities.sol";
+import "./standards/ARROWS721.sol";
+import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
+
+/**
+ * @title  Arrows
+ * @author Hurls
+ * @notice Up and to the right.
+ */
+contract Arrows is IArrows, ARROWS721, Ownable {
+    event MintPriceUpdated(uint256 newPrice);
+    event MintLimitUpdated(uint8 newLimit);
+    event WinnerPercentageUpdated(uint8 newPercentage);
+    event PrizeClaimed(uint256 tokenId, address winner, uint256 amount);
+    event OwnerShareWithdrawn(uint256 amount);
+    event PrizePoolUpdated(uint256 totalDeposited, uint256 totalWithdrawn);
+    event EmergencyWithdrawn(uint256 amount);
+    event TokensMinted(address indexed recipient, uint256 startTokenId, uint256 count);
+    event TokensComposited(uint256 indexed keptTokenId, uint256 indexed burnedTokenId);
+    event TokenBurned(uint256 indexed tokenId, address indexed burner);
+
+    uint8 public mintLimit = 10;
+    uint256 public mintPrice = 0.001 ether;
+    uint256 public tokenMintId = 0;
+    uint256 public constant MAX_COMPOSITE_LEVEL = 5;
+    uint256 public totalPrizePool;
+    uint8 public winnerPercentage = 60; // Default 60% for winner
+    uint256 public ownerWithdrawn; // Track how much the owner has withdrawn
+
+    /// @dev We use this database for persistent storage.
+    Arrows arrowsData;
+
+    // Prize pool state
+    struct PrizePool {
+        uint256 totalDeposited; // Total ETH ever deposited
+        uint256 totalWithdrawn; // Total ETH withdrawn by owner
+        uint256 winnerPercentage; // Percentage for winner (1-99)
+        uint256 lastWinnerClaim; // Timestamp of last winner claim
+    }
+
+    PrizePool public prizePool;
+
+    // Store token metadata directly instead of using epochs
+    struct TokenMetadata {
+        uint256 seed; // The final seed used for randomization
+        uint8[5] colorBands; // Color band values
+        uint8[5] gradients; // Gradient values
+    }
+
+    mapping(uint256 => TokenMetadata) private tokenMetadata;
+
+    /// @dev Initializes the Arrows Originals contract and links the Edition contract.
+    constructor() Ownable() {
+        arrowsData.day0 = uint32(block.timestamp);
+        arrowsData.minted = 0;
+        arrowsData.burned = 0;
+        prizePool.winnerPercentage = 60; // Default 60% for winner
+        prizePool.lastWinnerClaim = 0;
+    }
+
+    /// @notice Update the mint price
+    /// @param newPrice The new price in ETH
+    function updateMintPrice(uint256 newPrice) external onlyOwner {
+        mintPrice = newPrice;
+        emit MintPriceUpdated(newPrice);
+    }
+
+    /// @notice Update the mint limit
+    /// @param newLimit The new limit of tokens per mint
+    function updateMintLimit(uint8 newLimit) external onlyOwner {
+        require(newLimit > 0 && newLimit <= 100, "Invalid limit");
+        mintLimit = newLimit;
+        emit MintLimitUpdated(newLimit);
+    }
+
+    /// @notice Update the winner's percentage of the prize pool
+    /// @param newPercentage The new percentage (1-99)
+    function updateWinnerPercentage(uint8 newPercentage) external onlyOwner {
+        require(newPercentage > 0 && newPercentage < 100, "Invalid percentage");
+        require(block.timestamp >= prizePool.lastWinnerClaim + 1 days, "Too soon after winner claim");
+        prizePool.winnerPercentage = newPercentage;
+        emit WinnerPercentageUpdated(newPercentage);
+    }
+
+    /// @notice Generate randomness for a token at mint time
+    /// @param tokenId The token ID to generate randomness for
+    function _generateTokenRandomness(uint256 tokenId) internal {
+        // Create deterministic but unpredictable randomness using block data
+        uint256 seed = uint256(keccak256(abi.encodePacked(block.timestamp, block.prevrandao, tokenId, msg.sender)))
+            % type(uint128).max;
+
+        // Store the seed for this token
+        tokenMetadata[tokenId].seed = seed;
+
+        // Generate and store initial color bands and gradients
+        uint256 n = Utilities.random(seed, "band", 120);
+        uint8 colorBand = n > 80 ? 0 : n > 40 ? 1 : n > 20 ? 2 : n > 10 ? 3 : n > 4 ? 4 : n > 1 ? 5 : 6;
+
+        n = Utilities.random(seed, "gradient", 100);
+        uint8 gradient = n < 20 ? uint8(1 + (n % 6)) : 0;
+
+        // Store the initial values
+        arrowsData.all[tokenId].colorBands[0] = colorBand;
+        arrowsData.all[tokenId].gradients[0] = gradient;
+    }
+
+    /// @notice Mint new Arrows tokens
+    /// @param recipient The address to receive the tokens
+    function mint(address recipient) external payable {
+        require(recipient != address(0), "Invalid recipient");
+
+        // Check if enough ETH was sent
+        require(msg.value >= mintPrice * mintLimit, "Insufficient payment");
+
+        // Update prize pool
+        prizePool.totalDeposited += msg.value;
+        emit PrizePoolUpdated(prizePool.totalDeposited, prizePool.totalWithdrawn);
+
+        uint256 startTokenId = tokenMintId;
+
+        // Mint the tokens
+        for (uint256 i; i < mintLimit;) {
+            uint256 id = tokenMintId++;
+
+            StoredArrow storage arrow = arrowsData.all[id];
+            arrow.day = Utilities.day(arrowsData.day0, block.timestamp);
+            arrow.seed = uint16(id);
+            arrow.divisorIndex = 0;
+            arrow.epoch = 1; // Set to 1 for backward compatibility
+
+            // Generate immediate randomness for this token
+            _generateTokenRandomness(id);
+
+            _safeMint(recipient, id);
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        // Keep track of how many arrows have been minted
+        unchecked {
+            arrowsData.minted += uint32(mintLimit);
+        }
+
+        // Add to prize pool
+        unchecked {
+            totalPrizePool += msg.value;
+        }
+
+        emit TokensMinted(recipient, startTokenId, mintLimit);
+    }
+
+    /// @notice Composite one token into another, mixing visuals and reducing arrow count
+    /// @param tokenId The token ID to keep alive (its visual will change)
+    /// @param burnId The token ID to composite into the kept token
+    function composite(uint256 tokenId, uint256 burnId) external {
+        _composite(tokenId, burnId);
+        unchecked {
+            ++arrowsData.burned;
+        }
+        emit TokensComposited(tokenId, burnId);
+    }
+
+    /// @notice Burn a single arrow token without compositing
+    /// @param tokenId The token ID to burn
+    /// @dev This is a common purpose burn method that does not affect other tokens
+    function burn(uint256 tokenId) external {
+        if (!_isApprovedOrOwner(msg.sender, tokenId)) {
+            revert NotAllowed();
+        }
+
+        _burn(tokenId);
+        unchecked {
+            ++arrowsData.burned;
+        }
+        emit TokenBurned(tokenId, msg.sender);
+    }
+
+    /// @notice Get the metadata URI for a token
+    /// @param tokenId The token ID to get metadata for
+    /// @return The metadata URI string
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        _requireMinted(tokenId);
+
+        return ArrowsMetadata.tokenURI(tokenId, arrowsData);
+    }
+
+    /// @dev Get arrow with the stored seed instead of epoch-based randomness
+    function _getArrowWithSeed(uint256 tokenId) internal view returns (IArrows.Arrow memory) {
+        IArrows.Arrow memory arrow = ArrowsArt.getArrow(tokenId, arrowsData);
+
+        // Override the seed with our stored seed
+        if (tokenMetadata[tokenId].seed != 0) {
+            arrow.seed = tokenMetadata[tokenId].seed;
+        }
+
+        return arrow;
+    }
+
+    /// @dev Composite one token into to another and burn it.
+    /// @param tokenId The token ID to keep. Its art and arrow-count will change.
+    /// @param burnId The token ID to burn in the process.
+    function _composite(uint256 tokenId, uint256 burnId) internal {
+        (StoredArrow storage toKeep,, uint8 divisorIndex) = _tokenOperation(tokenId, burnId);
+
+        uint8 nextDivisor = divisorIndex + 1;
+
+        // We only need to breed band + gradient up until 4-Arrows.
+        if (divisorIndex < 5) {
+            (uint8 gradient, uint8 colorBand) = _compositeGenes(tokenId, burnId);
+
+            toKeep.colorBands[divisorIndex] = colorBand;
+            toKeep.gradients[divisorIndex] = gradient;
+        }
+
+        // Composite our arrow
+        toKeep.day = Utilities.day(arrowsData.day0, block.timestamp);
+        toKeep.composites[divisorIndex] = uint16(burnId);
+        toKeep.divisorIndex = nextDivisor;
+
+        // Generate new randomness for the composited token
+        uint256 newSeed = uint256(
+            keccak256(abi.encodePacked(tokenMetadata[tokenId].seed, tokenMetadata[burnId].seed, block.timestamp))
+        ) % type(uint128).max;
+
+        tokenMetadata[tokenId].seed = newSeed;
+
+        // Perform the burn.
+        _burn(burnId);
+
+        // Notify DAPPs about the Composite.
+        emit Composite(tokenId, burnId, ArrowsArt.DIVISORS()[toKeep.divisorIndex]);
+        emit MetadataUpdate(tokenId);
+    }
+
+    /// @dev Composite the gradient and colorBand settings.
+    /// @param tokenId The token ID to keep.
+    /// @param burnId The token ID to burn.
+    function _compositeGenes(uint256 tokenId, uint256 burnId) internal view returns (uint8 gradient, uint8 colorBand) {
+        Arrow memory keeper = _getArrowWithSeed(tokenId);
+        Arrow memory burner = _getArrowWithSeed(burnId);
+
+        // Pseudorandom gene manipulation.
+        uint256 randomizer = uint256(keccak256(abi.encodePacked(keeper.seed, burner.seed)));
+
+        // If at least one token has a gradient, we force it in ~20% of cases.
+        gradient = Utilities.random(randomizer, 100) > 80
+            ? randomizer % 2 == 0
+                ? Utilities.minGt0(keeper.gradient, burner.gradient)
+                : Utilities.max(keeper.gradient, burner.gradient)
+            : Utilities.min(keeper.gradient, burner.gradient);
+
+        // We breed the lower end average color band when breeding.
+        colorBand = Utilities.avg(keeper.colorBand, burner.colorBand);
+    }
+
+    /// @dev Make sure this is a valid request to composite/switch a token pair.
+    /// @param tokenId The token ID to keep.
+    /// @param burnId The token ID to burn.
+    function _tokenOperation(uint256 tokenId, uint256 burnId)
+        internal
+        view
+        returns (StoredArrow storage toKeep, StoredArrow storage toBurn, uint8 divisorIndex)
+    {
+        toKeep = arrowsData.all[tokenId];
+        toBurn = arrowsData.all[burnId];
+        divisorIndex = toKeep.divisorIndex;
+
+        require(
+            _isApprovedOrOwner(msg.sender, tokenId) && _isApprovedOrOwner(msg.sender, burnId)
+                && divisorIndex == toBurn.divisorIndex && tokenId != burnId && divisorIndex <= MAX_COMPOSITE_LEVEL,
+            "Invalid composite operation"
+        );
+    }
+
+    /// @notice Withdraw the owner's share of the prize pool
+    /// @dev Only callable by the contract owner
+    /// @dev Withdraws the available owner share based on total deposits and withdrawals
+    function withdrawOwnerShare() external onlyOwner {
+        uint256 availableToWithdraw = getAvailableOwnerWithdrawal();
+        require(availableToWithdraw > 0, "No new funds to withdraw");
+
+        (bool success,) = payable(owner()).call{value: availableToWithdraw}("");
+        require(success, "Transfer failed");
+
+        prizePool.totalWithdrawn += availableToWithdraw;
+        emit OwnerShareWithdrawn(availableToWithdraw);
+    }
+
+    /// @notice Claim the prize for a winning token
+    /// @param tokenId The token ID to check and claim
+    /// @dev Verifies token ownership, winning status, and available prize pool
+    /// @dev Burns the winning token and transfers the prize to the winner
+    function claimPrize(uint256 tokenId) external {
+        require(ownerOf(tokenId) == msg.sender, "Not token owner");
+        require(isWinningToken(tokenId), "Not a winning token");
+
+        uint256 winnerShare = getWinnerShare();
+        uint256 availableBalance = getAvailablePrizePool();
+        require(winnerShare > 0 && winnerShare <= availableBalance, "No prize available");
+
+        prizePool.totalDeposited -= winnerShare;
+        prizePool.lastWinnerClaim = block.timestamp;
+        _burn(tokenId);
+        unchecked {
+            ++arrowsData.burned;
+        }
+
+        (bool success,) = payable(msg.sender).call{value: winnerShare}("");
+        require(success, "Transfer failed");
+
+        emit PrizeClaimed(tokenId, msg.sender, winnerShare);
+    }
+
+    /// @notice Emergency withdrawal of all contract balance
+    /// @dev Only callable by the contract owner
+    /// @dev Used in case of emergency to recover all funds
+    function emergencyWithdraw() external onlyOwner {
+        uint256 balance = address(this).balance;
+        require(balance > 0, "No funds to withdraw");
+
+        (bool success,) = payable(owner()).call{value: balance}("");
+        require(success, "Transfer failed");
+
+        emit EmergencyWithdrawn(balance);
+    }
+
+    /// @notice Get the current available prize pool balance
+    /// @return The current contract balance
+    function getAvailablePrizePool() public view returns (uint256) {
+        return address(this).balance;
+    }
+
+    /// @notice Calculate the owner's share of the prize pool
+    /// @return The owner's share based on total deposits and winner percentage
+    function getOwnerShare() public view returns (uint256) {
+        unchecked {
+            return (prizePool.totalDeposited * (100 - prizePool.winnerPercentage)) / 100;
+        }
+    }
+
+    /// @notice Calculate the winner's share of the prize pool
+    /// @return The winner's share based on total deposits and winner percentage
+    function getWinnerShare() public view returns (uint256) {
+        unchecked {
+            return (prizePool.totalDeposited * prizePool.winnerPercentage) / 100;
+        }
+    }
+
+    /// @notice Calculate the available amount for owner withdrawal
+    /// @return The amount available for owner to withdraw
+    function getAvailableOwnerWithdrawal() public view returns (uint256) {
+        uint256 ownerShare = getOwnerShare();
+        return ownerShare > prizePool.totalWithdrawn ? ownerShare - prizePool.totalWithdrawn : 0;
+    }
+
+    /// @notice Check if a token is a winning token
+    /// @param tokenId The token ID to check
+    /// @return bool True if the token is a winner, false otherwise
+    /// @dev A token is considered a winner if it has exactly 1 arrow and its first color is "018A08"
+    function isWinningToken(uint256 tokenId) public view returns (bool) {
+        if (!_exists(tokenId)) return false;
+
+        Arrow memory arrow = _getArrowWithSeed(tokenId);
+        if (arrow.arrowsCount != 1) return false;
+
+        (string[] memory tokenColors,) = ArrowsArt.colors(arrow, arrowsData);
+        return keccak256(abi.encodePacked(tokenColors[0])) == keccak256(abi.encodePacked("018A08"));
+    }
+}
