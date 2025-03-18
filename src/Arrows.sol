@@ -35,7 +35,7 @@ contract Arrows is IArrows, ARROWS721, Ownable {
     uint256 public ownerWithdrawn; // Track how much the owner has withdrawn
 
     /// @dev We use this database for persistent storage.
-    Arrows arrowsData;
+    Arrows _arrowsData;
 
     // Prize pool state
     struct PrizePool {
@@ -54,13 +54,12 @@ contract Arrows is IArrows, ARROWS721, Ownable {
         uint8[5] gradients; // Gradient values
     }
 
-    mapping(uint256 => TokenMetadata) private tokenMetadata;
+    mapping(uint256 => TokenMetadata) private _tokenMetadata;
 
     /// @dev Initializes the Arrows Originals contract and links the Edition contract.
     constructor() Ownable() {
-        arrowsData.day0 = uint32(block.timestamp);
-        arrowsData.minted = 0;
-        arrowsData.burned = 0;
+        _arrowsData.minted = 0;
+        _arrowsData.burned = 0;
         prizePool.winnerPercentage = 60; // Default 60% for winner
         prizePool.lastWinnerClaim = 0;
     }
@@ -97,7 +96,7 @@ contract Arrows is IArrows, ARROWS721, Ownable {
             % type(uint128).max;
 
         // Store the seed for this token
-        tokenMetadata[tokenId].seed = seed;
+        _tokenMetadata[tokenId].seed = seed;
 
         // Generate and store initial color bands and gradients
         uint256 n = Utilities.random(seed, "band", 120);
@@ -107,8 +106,8 @@ contract Arrows is IArrows, ARROWS721, Ownable {
         uint8 gradient = n < 20 ? uint8(1 + (n % 6)) : 0;
 
         // Store the initial values
-        arrowsData.all[tokenId].colorBands[0] = colorBand;
-        arrowsData.all[tokenId].gradients[0] = gradient;
+        _arrowsData.all[tokenId].colorBands[0] = colorBand;
+        _arrowsData.all[tokenId].gradients[0] = gradient;
     }
 
     /// @notice Mint new Arrows tokens
@@ -129,11 +128,9 @@ contract Arrows is IArrows, ARROWS721, Ownable {
         for (uint256 i; i < mintLimit;) {
             uint256 id = tokenMintId++;
 
-            StoredArrow storage arrow = arrowsData.all[id];
-            arrow.day = Utilities.day(arrowsData.day0, block.timestamp);
+            StoredArrow storage arrow = _arrowsData.all[id];
             arrow.seed = uint16(id);
             arrow.divisorIndex = 0;
-            arrow.epoch = 1; // Set to 1 for backward compatibility
 
             // Generate immediate randomness for this token
             _generateTokenRandomness(id);
@@ -147,7 +144,7 @@ contract Arrows is IArrows, ARROWS721, Ownable {
 
         // Keep track of how many arrows have been minted
         unchecked {
-            arrowsData.minted += uint32(mintLimit);
+            _arrowsData.minted += uint32(mintLimit);
         }
 
         // Add to prize pool
@@ -164,7 +161,7 @@ contract Arrows is IArrows, ARROWS721, Ownable {
     function composite(uint256 tokenId, uint256 burnId) external {
         _composite(tokenId, burnId);
         unchecked {
-            ++arrowsData.burned;
+            ++_arrowsData.burned;
         }
         emit TokensComposited(tokenId, burnId);
     }
@@ -179,7 +176,7 @@ contract Arrows is IArrows, ARROWS721, Ownable {
 
         _burn(tokenId);
         unchecked {
-            ++arrowsData.burned;
+            ++_arrowsData.burned;
         }
         emit TokenBurned(tokenId, msg.sender);
     }
@@ -190,16 +187,16 @@ contract Arrows is IArrows, ARROWS721, Ownable {
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         _requireMinted(tokenId);
 
-        return ArrowsMetadata.tokenURI(tokenId, arrowsData);
+        return ArrowsMetadata.tokenURI(tokenId, _arrowsData);
     }
 
     /// @dev Get arrow with the stored seed instead of epoch-based randomness
     function _getArrowWithSeed(uint256 tokenId) internal view returns (IArrows.Arrow memory) {
-        IArrows.Arrow memory arrow = ArrowsArt.getArrow(tokenId, arrowsData);
+        IArrows.Arrow memory arrow = ArrowsArt.getArrow(tokenId, _arrowsData);
 
         // Override the seed with our stored seed
-        if (tokenMetadata[tokenId].seed != 0) {
-            arrow.seed = tokenMetadata[tokenId].seed;
+        if (_tokenMetadata[tokenId].seed != 0) {
+            arrow.seed = _tokenMetadata[tokenId].seed;
         }
 
         return arrow;
@@ -222,16 +219,15 @@ contract Arrows is IArrows, ARROWS721, Ownable {
         }
 
         // Composite our arrow
-        toKeep.day = Utilities.day(arrowsData.day0, block.timestamp);
         toKeep.composites[divisorIndex] = uint16(burnId);
         toKeep.divisorIndex = nextDivisor;
 
         // Generate new randomness for the composited token
         uint256 newSeed = uint256(
-            keccak256(abi.encodePacked(tokenMetadata[tokenId].seed, tokenMetadata[burnId].seed, block.timestamp))
+            keccak256(abi.encodePacked(_tokenMetadata[tokenId].seed, _tokenMetadata[burnId].seed, block.timestamp))
         ) % type(uint128).max;
 
-        tokenMetadata[tokenId].seed = newSeed;
+        _tokenMetadata[tokenId].seed = newSeed;
 
         // Perform the burn.
         _burn(burnId);
@@ -270,8 +266,8 @@ contract Arrows is IArrows, ARROWS721, Ownable {
         view
         returns (StoredArrow storage toKeep, StoredArrow storage toBurn, uint8 divisorIndex)
     {
-        toKeep = arrowsData.all[tokenId];
-        toBurn = arrowsData.all[burnId];
+        toKeep = _arrowsData.all[tokenId];
+        toBurn = _arrowsData.all[burnId];
         divisorIndex = toKeep.divisorIndex;
 
         require(
@@ -311,7 +307,7 @@ contract Arrows is IArrows, ARROWS721, Ownable {
         prizePool.lastWinnerClaim = block.timestamp;
         _burn(tokenId);
         unchecked {
-            ++arrowsData.burned;
+            ++_arrowsData.burned;
         }
 
         (bool success,) = payable(msg.sender).call{value: winnerShare}("");
@@ -372,7 +368,7 @@ contract Arrows is IArrows, ARROWS721, Ownable {
         Arrow memory arrow = _getArrowWithSeed(tokenId);
         if (arrow.arrowsCount != 1) return false;
 
-        (string[] memory tokenColors,) = ArrowsArt.colors(arrow, arrowsData);
+        (string[] memory tokenColors,) = ArrowsArt.colors(arrow, _arrowsData);
         return keccak256(abi.encodePacked(tokenColors[0])) == keccak256(abi.encodePacked("018A08"));
     }
 }

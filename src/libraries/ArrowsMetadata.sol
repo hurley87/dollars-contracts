@@ -20,8 +20,7 @@ library ArrowsMetadata {
         IArrows.Arrow memory arrow = ArrowsArt.getArrow(tokenId, arrows);
 
         // Generate both static and animated versions
-        bytes memory staticSvg = ArrowsArt.generateSVG(arrow, arrows, true);
-        bytes memory animatedSvg = ArrowsArt.generateSVG(arrow, arrows, false);
+        bytes memory staticSvg = ArrowsArt.generateSVG(arrow, arrows);
 
         bytes memory metadata = abi.encodePacked(
             "{",
@@ -32,10 +31,6 @@ library ArrowsMetadata {
             '"image": ',
             '"data:image/svg+xml;base64,',
             Base64.encode(staticSvg),
-            '",',
-            '"animation_url": ',
-            '"data:text/html;base64,',
-            Base64.encode(generateHTML(tokenId, animatedSvg)),
             '",',
             '"attributes": [',
             attributes(arrow),
@@ -50,7 +45,6 @@ library ArrowsMetadata {
     /// @param arrow The arrow to render.
     function attributes(IArrows.Arrow memory arrow) public pure returns (bytes memory) {
         bool showVisualAttributes = arrow.hasManyArrows;
-        bool showAnimationAttributes = arrow.arrowsCount > 0;
 
         return abi.encodePacked(
             showVisualAttributes
@@ -59,12 +53,7 @@ library ArrowsMetadata {
             showVisualAttributes
                 ? trait("Gradient", gradients(ArrowsArt.gradientIndex(arrow, arrow.stored.divisorIndex)), ",")
                 : "",
-            showAnimationAttributes
-                ? trait("Speed", arrow.speed == 4 ? "2x" : arrow.speed == 2 ? "1x" : "0.5x", ",")
-                : "",
-            showAnimationAttributes ? trait("Shift", arrow.direction == 0 ? "IR" : "UV", ",") : "",
-            trait("Arrows", Utilities.uint2str(arrow.arrowsCount), ","),
-            trait("Day", Utilities.uint2str(arrow.stored.day), "")
+            trait("Arrows", Utilities.uint2str(arrow.arrowsCount), "")
         );
     }
 

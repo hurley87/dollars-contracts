@@ -73,10 +73,7 @@ library ArrowsArt {
         arrow.stored = stored;
 
         // Set up the source of randomness + seed for this Arrow.
-        // Note: This seed will be overridden by the Arrows contract if needed
-        // We keep this for backward compatibility
-        uint128 randomness = arrows.epochs[stored.epoch].randomness;
-        arrow.seed = uint256(keccak256(abi.encodePacked(randomness, stored.seed))) % type(uint128).max;
+        arrow.seed = stored.seed;
 
         // Helpers
         arrow.isRoot = divisorIndex == 0;
@@ -87,8 +84,6 @@ library ArrowsArt {
         arrow.colorBand = colorBandIndex(arrow, divisorIndex);
         arrow.gradient = gradientIndex(arrow, divisorIndex);
         arrow.arrowsCount = DIVISORS()[divisorIndex];
-        arrow.speed = uint8(2 ** (arrow.seed % 3));
-        arrow.direction = uint8(arrow.seed % 2);
     }
 
     /// @dev Query the gradient of a given arrow at a certain arrow count.
@@ -264,55 +259,6 @@ library ArrowsArt {
         return arrows > 4 ? 160 : arrows == 4 ? 268 : arrows > 1 ? 304 : 286;
     }
 
-    /// @dev Get the animation SVG snipped for an individual check of a piece.
-    /// @param data The data object containing rendering settings.
-    /// @param offset The index position of the check in question.
-    /// @param allColors All available colors.
-    function fillAnimation(ArrowRenderData memory data, uint256 offset, string[80] memory allColors)
-        public
-        pure
-        returns (bytes memory)
-    {
-        // We only pick 20 colors from our gradient to reduce execution time.
-        uint8 count = 20;
-
-        bytes memory values;
-
-        // Reverse loop through our color gradient.
-        if (data.arrow.direction == 0) {
-            for (uint256 i = offset + 80; i > offset;) {
-                values = abi.encodePacked(values, "#", allColors[i % 80], ";");
-                unchecked {
-                    i -= 4;
-                }
-            }
-            // Forward loop through our color gradient.
-        } else {
-            for (uint256 i = offset; i < offset + 80;) {
-                values = abi.encodePacked(values, "#", allColors[i % 80], ";");
-                unchecked {
-                    i += 4;
-                }
-            }
-        }
-
-        // Add initial color as last one for smooth animations.
-        values = abi.encodePacked(values, "#", allColors[offset]);
-
-        // Render the SVG snipped for the animation
-        return abi.encodePacked(
-            "<animate ",
-            'attributeName="fill" values="',
-            values,
-            '" ',
-            'dur="',
-            Utilities.uint2str(count * 2 / data.arrow.speed),
-            's" begin="animation.begin" ',
-            'repeatCount="indefinite" ',
-            "/>"
-        );
-    }
-
     /// @dev Generate the SVG code for all arrows in a given token.
     /// @param data The data object containing rendering settings.
     function generateArrows(ArrowRenderData memory data) public pure returns (bytes memory) {
@@ -419,13 +365,12 @@ library ArrowsArt {
     /// @dev Generate the complete SVG code for a given Arrow.
     /// @param arrow The arrow to render.
     /// @param arrows The DB containing all arrows.
-    function generateSVG(IArrows.Arrow memory arrow, IArrows.Arrows storage arrows, bool isStatic)
+    function generateSVG(IArrows.Arrow memory arrow, IArrows.Arrows storage arrows)
         public
         view
         returns (bytes memory)
     {
         ArrowRenderData memory data = collectRenderData(arrow, arrows);
-        data.isStatic = isStatic;
 
         return abi.encodePacked(
             "<svg ",
@@ -446,25 +391,10 @@ library ArrowsArt {
             '"/>',
             generateGrid(),
             generateArrows(data),
-            !isStatic
-                ? bytes(
-                    '<rect width="680" height="680" fill="transparent"><animate attributeName="width" from="680" to="0" dur="0.2s" begin="click" fill="freeze" id="animation"/></rect>'
-                )
-                : bytes(""),
             "</svg>"
         );
     }
 
-    /// @dev Generate the complete SVG code for a given Arrow.
-    /// @param arrow The arrow to render.
-    /// @param arrows The DB containing all arrows.
-    function generateSVG(IArrows.Arrow memory arrow, IArrows.Arrows storage arrows)
-        public
-        view
-        returns (bytes memory)
-    {
-        return generateSVG(arrow, arrows, false);
-    }
 }
 
 /// @dev Bag holding all data relevant for rendering.
