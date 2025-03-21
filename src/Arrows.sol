@@ -26,26 +26,41 @@ contract Arrows is IArrows, ARROWS721, Ownable {
     event TokensComposited(uint256 indexed keptTokenId, uint256 indexed burnedTokenId);
     event TokenBurned(uint256 indexed tokenId, address indexed burner);
 
-    uint8 public mintLimit = 10;
+    uint8 public mintLimit = 8;
+    uint256 public constant MAX_COMPOSITE_LEVEL = 5;
     uint256 public mintPrice = 0.001 ether;
     uint256 public tokenMintId = 0;
-    uint256 public constant MAX_COMPOSITE_LEVEL = 5;
-    uint256 public totalPrizePool;
-    uint8 public winnerPercentage = 60; // Default 60% for winner
-    uint256 public ownerWithdrawn; // Track how much the owner has withdrawn
 
     /// @dev We use this database for persistent storage.
     Arrows _arrowsData;
 
     // Prize pool state
     struct PrizePool {
+        uint8 winnerPercentage; // Percentage for winner (1-99)
+        uint32 lastWinnerClaim; // Timestamp of last winner claim
         uint256 totalDeposited; // Total ETH ever deposited
         uint256 totalWithdrawn; // Total ETH withdrawn by owner
-        uint256 winnerPercentage; // Percentage for winner (1-99)
-        uint256 lastWinnerClaim; // Timestamp of last winner claim
     }
 
     PrizePool public prizePool;
+
+    /// @notice Get the total amount deposited in the prize pool
+    /// @return The total amount deposited
+    function getTotalDeposited() public view returns (uint256) {
+        return prizePool.totalDeposited;
+    }
+
+    /// @notice Get the total amount withdrawn by the owner
+    /// @return The total amount withdrawn
+    function getTotalWithdrawn() public view returns (uint256) {
+        return prizePool.totalWithdrawn;
+    }
+
+    /// @notice Get the winner percentage from the prize pool
+    /// @return The winner percentage
+    function getWinnerPercentage() public view returns (uint8) {
+        return prizePool.winnerPercentage;
+    }
 
     // Store token metadata directly instead of using epochs
     struct TokenMetadata {
@@ -83,7 +98,7 @@ contract Arrows is IArrows, ARROWS721, Ownable {
     /// @param newPercentage The new percentage (1-99)
     function updateWinnerPercentage(uint8 newPercentage) external onlyOwner {
         require(newPercentage > 0 && newPercentage < 100, "Invalid percentage");
-        require(block.timestamp >= prizePool.lastWinnerClaim + 1 days, "Too soon after winner claim");
+        require(block.timestamp >= uint256(prizePool.lastWinnerClaim) + 1 days, "Too soon after winner claim");
         prizePool.winnerPercentage = newPercentage;
         emit WinnerPercentageUpdated(newPercentage);
     }
@@ -91,19 +106,27 @@ contract Arrows is IArrows, ARROWS721, Ownable {
     /// @notice Generate randomness for a token at mint time
     /// @param tokenId The token ID to generate randomness for
     function _generateTokenRandomness(uint256 tokenId) internal {
-        // Create deterministic but unpredictable randomness using block data
-        uint256 seed = uint256(keccak256(abi.encodePacked(block.timestamp, block.prevrandao, tokenId, msg.sender)))
-            % type(uint128).max;
+        uint256 seed = uint256(
+            keccak256(abi.encodePacked(block.timestamp, block.prevrandao, tokenId, msg.sender, _arrowsData.minted))
+        ) % type(uint128).max;
 
         // Store the seed for this token
         _tokenMetadata[tokenId].seed = seed;
 
-        // Generate and store initial color bands and gradients
-        uint256 n = Utilities.random(seed, "band", 120);
-        uint8 colorBand = n > 80 ? 0 : n > 40 ? 1 : n > 20 ? 2 : n > 10 ? 3 : n > 4 ? 4 : n > 1 ? 5 : 6;
+        // Extract non-contiguous bytes to reduce correlation
+        uint8 n1 = uint8(seed & 0xFF); // byte 0
+        uint8 n2 = uint8((seed >> 56) & 0xFF); // byte 7
 
-        n = Utilities.random(seed, "gradient", 100);
-        uint8 gradient = n < 20 ? uint8(1 + (n % 6)) : 0;
+        // Scale to maintain original rarity distributions
+        uint8 scaledN1 = uint8((uint256(n1) * 120) / 255);
+        uint8 scaledN2 = uint8((uint256(n2) * 100) / 255);
+
+        // Apply thresholds using scaled values
+        uint8 colorBand = scaledN1 > 80
+            ? 0
+            : scaledN1 > 40 ? 1 : scaledN1 > 20 ? 2 : scaledN1 > 10 ? 3 : scaledN1 > 4 ? 4 : scaledN1 > 1 ? 5 : 6;
+
+        uint8 gradient = scaledN2 < 20 ? uint8(1 + (scaledN2 % 6)) : 0;
 
         // Store the initial values
         _arrowsData.all[tokenId].colorBands[0] = colorBand;
@@ -145,11 +168,6 @@ contract Arrows is IArrows, ARROWS721, Ownable {
         // Keep track of how many arrows have been minted
         unchecked {
             _arrowsData.minted += uint32(mintLimit);
-        }
-
-        // Add to prize pool
-        unchecked {
-            totalPrizePool += msg.value;
         }
 
         emit TokensMinted(recipient, startTokenId, mintLimit);
@@ -304,7 +322,7 @@ contract Arrows is IArrows, ARROWS721, Ownable {
         require(winnerShare > 0 && winnerShare <= availableBalance, "No prize available");
 
         prizePool.totalDeposited -= winnerShare;
-        prizePool.lastWinnerClaim = block.timestamp;
+        prizePool.lastWinnerClaim = uint32(block.timestamp);
         _burn(tokenId);
         unchecked {
             ++_arrowsData.burned;
