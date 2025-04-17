@@ -26,7 +26,7 @@ contract Arrows is IArrows, ARROWS721, Ownable {
     event TokensComposited(uint256 indexed keptTokenId, uint256 indexed burnedTokenId);
     event TokenBurned(uint256 indexed tokenId, address indexed burner);
 
-    uint8 public mintLimit = 8;
+    uint8 public mintLimit = 4;
     uint256 public constant MAX_COMPOSITE_LEVEL = 5;
     uint256 public mintPrice = 0.001 ether;
     uint256 public tokenMintId = 0;
@@ -122,9 +122,9 @@ contract Arrows is IArrows, ARROWS721, Ownable {
         uint8 scaledN2 = uint8((uint256(n2) * 100) / 255);
 
         // Apply thresholds using scaled values
-        uint8 colorBand = scaledN1 > 80
+        uint8 colorBand = scaledN1 > 20
             ? 0
-            : scaledN1 > 40 ? 1 : scaledN1 > 20 ? 2 : scaledN1 > 10 ? 3 : scaledN1 > 4 ? 4 : scaledN1 > 1 ? 5 : 6;
+            : scaledN1 > 10 ? 1 : scaledN1 > 5 ? 2 : scaledN1 > 2 ? 3 : scaledN1 > 1 ? 4 : scaledN1 > 0 ? 5 : 6;
 
         uint8 gradient = scaledN2 < 20 ? uint8(1 + (scaledN2 % 6)) : 0;
 

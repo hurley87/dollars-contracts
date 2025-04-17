@@ -33,7 +33,7 @@ import "./Utilities.sol";
 library ArrowsArt {
     /// @dev The semiperfect divisors of the 80 arrows.
     function DIVISORS() public pure returns (uint8[8] memory) {
-        return [80, 40, 20, 10, 5, 4, 1, 0];
+        return [4, 2, 1, 0, 0, 0, 0, 0];
     }
 
     /// @dev The different color band sizes that we use for the art.
@@ -394,7 +394,6 @@ library ArrowsArt {
             "</svg>"
         );
     }
-
 }
 
 /// @dev Bag holding all data relevant for rendering.
