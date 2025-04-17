@@ -244,19 +244,19 @@ library ArrowsArt {
     /// @dev Get the number of arrows we should display per row.
     /// @param arrows The number of arrows in the piece.
     function perRow(uint8 arrows) public pure returns (uint8) {
-        return arrows == 80 ? 8 : arrows >= 20 ? 4 : arrows == 10 || arrows == 4 ? 2 : 1;
+        return arrows == 4 ? 2 : 1;
     }
 
     /// @dev Get the X-offset for positioning arrow horizontally.
     /// @param arrows The number of arrows in the piece.
     function rowX(uint8 arrows) public pure returns (uint16) {
-        return arrows <= 1 ? 286 : arrows == 5 ? 304 : arrows == 10 || arrows == 4 ? 268 : 196;
+        return arrows == 4 ? 268 : 196;
     }
 
     /// @dev Get the Y-offset for positioning arrow vertically.
     /// @param arrows The number of arrows in the piece.
     function rowY(uint8 arrows) public pure returns (uint16) {
-        return arrows > 4 ? 160 : arrows == 4 ? 268 : arrows > 1 ? 304 : 286;
+        return arrows == 4 ? 268 : arrows > 1 ? 304 : 286;
     }
 
     /// @dev Generate the SVG code for all arrows in a given token.

@@ -24,7 +24,7 @@ library ArrowsMetadata {
 
         bytes memory metadata = abi.encodePacked(
             "{",
-            '"name": "Arrows ',
+            '"name": "Dollars ',
             Utilities.uint2str(tokenId),
             '",',
             '"description": "Up and to the right.",',

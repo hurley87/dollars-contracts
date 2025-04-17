@@ -10,11 +10,11 @@ import "./standards/ARROWS721.sol";
 import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 
 /**
- * @title  Arrows
+ * @title  Dollars
  * @author Hurls
  * @notice Up and to the right.
  */
-contract Arrows is IArrows, ARROWS721, Ownable {
+contract Dollars is IArrows, ARROWS721, Ownable {
     event MintPriceUpdated(uint256 newPrice);
     event MintLimitUpdated(uint8 newLimit);
     event WinnerPercentageUpdated(uint8 newPercentage);
