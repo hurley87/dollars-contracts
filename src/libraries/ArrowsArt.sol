@@ -260,7 +260,7 @@ library ArrowsArt {
     /// @param arrows The number of arrows in the piece.
     function rowY(uint8 arrows) public pure returns (uint16) {
         if (arrows == 2) {
-            return 280; // Adjusted value to center two arrows vertically
+            return 270; // Adjusted value to center two arrows vertically
         }
         return arrows > 4 ? 160 : arrows == 4 ? 268 : arrows > 1 ? 304 : 286;
     }

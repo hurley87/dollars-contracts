@@ -228,9 +228,14 @@ contract Dollars is IArrows, ARROWS721, Ownable {
 
         uint8 nextDivisor = divisorIndex + 1;
 
+        // Declare gradient and colorBand outside the conditional block
+        uint8 gradient = 0;
+        uint8 colorBand = 0;
+
         // We only need to breed band + gradient up until 4-Arrows.
         if (divisorIndex < 5) {
-            (uint8 gradient, uint8 colorBand) = _compositeGenes(tokenId, burnId);
+            // Assign values from _compositeGenes
+            (gradient, colorBand) = _compositeGenes(tokenId, burnId);
 
             toKeep.colorBands[divisorIndex] = colorBand;
             toKeep.gradients[divisorIndex] = gradient;
@@ -240,9 +245,14 @@ contract Dollars is IArrows, ARROWS721, Ownable {
         toKeep.composites[divisorIndex] = uint16(burnId);
         toKeep.divisorIndex = nextDivisor;
 
-        // Generate new randomness for the composited token
+        // Generate new seed based on parents' seeds and resulting genes
         uint256 newSeed = uint256(
-            keccak256(abi.encodePacked(_tokenMetadata[tokenId].seed, _tokenMetadata[burnId].seed, block.timestamp))
+            keccak256(abi.encodePacked(
+                _tokenMetadata[tokenId].seed,
+                _tokenMetadata[burnId].seed,
+                gradient, // Use resulting gradient
+                colorBand // Use resulting colorBand
+            ))
         ) % type(uint128).max;
 
         _tokenMetadata[tokenId].seed = newSeed;
