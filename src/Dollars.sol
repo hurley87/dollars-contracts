@@ -31,6 +31,7 @@ contract Dollars is IArrows, ARROWS721, Ownable {
     event WinnerClaimPercentageUpdated(uint8 newPercentage);
     event WinningColorSet(string colorHex, uint8 colorIndex);
     event FreeMintUsed(address indexed recipient);
+    event TokensDeposited(address indexed sender, uint256 amount);
 
     uint8 public mintLimit = 4;
     uint256 public constant MAX_COMPOSITE_LEVEL = 5;
@@ -78,6 +79,23 @@ contract Dollars is IArrows, ARROWS721, Ownable {
         winningColorIndex = 23;
         ownerMintSharePercentage = 40;
         winnerClaimPercentage = 20;
+    }
+
+    /// @notice Allow users to deposit tokens to the contract for minting
+    /// @param amount The amount of tokens to deposit
+    function depositTokens(uint256 amount) external {
+        require(address(paymentToken) != address(0), "Payment token not set");
+        require(amount > 0, "Amount must be greater than 0");
+
+        // Transfer tokens from the user to this contract
+        bool success = paymentToken.transferFrom(msg.sender, address(this), amount);
+        require(success, "ERC20 transfer failed");
+
+        // Add the full amount to the prize pool
+        prizePool.totalDeposited += amount;
+
+        emit TokensDeposited(msg.sender, amount);
+        emit PrizePoolUpdated(prizePool.totalDeposited);
     }
 
     /// @notice Update the mint price (in terms of the payment token)
@@ -162,28 +180,56 @@ contract Dollars is IArrows, ARROWS721, Ownable {
         uint256 requiredAmount = mintPrice * mintLimit;
         require(requiredAmount > 0, "Mint price cannot be zero");
 
-        bool isFreeMint = !hasUsedFreeMint[msg.sender];
-        
-        // If this is not a free mint, process payment
-        if (!isFreeMint) {
-            uint256 allowance = paymentToken.allowance(msg.sender, address(this));
-            require(allowance >= requiredAmount, "Check allowance");
-            bool success = paymentToken.transferFrom(msg.sender, address(this), requiredAmount);
-            require(success, "ERC20 transfer failed (minter -> contract)");
+        // Process payment by default
+        uint256 allowance = paymentToken.allowance(msg.sender, address(this));
+        require(allowance >= requiredAmount, "Check allowance");
+        bool success = paymentToken.transferFrom(msg.sender, address(this), requiredAmount);
+        require(success, "ERC20 transfer failed (minter -> contract)");
 
-            uint256 ownerShareAmount = (requiredAmount * ownerMintSharePercentage) / 100;
-            if (ownerShareAmount > 0) {
-                bool ownerTransferSuccess = paymentToken.transfer(owner(), ownerShareAmount);
-                require(ownerTransferSuccess, "ERC20 transfer failed (contract -> owner)");
-            }
-
-            prizePool.totalDeposited += requiredAmount;
-            emit PrizePoolUpdated(prizePool.totalDeposited);
-        } else {
-            // Mark that this address has used its free mint
-            hasUsedFreeMint[msg.sender] = true;
-            emit FreeMintUsed(msg.sender);
+        uint256 ownerShareAmount = (requiredAmount * ownerMintSharePercentage) / 100;
+        if (ownerShareAmount > 0) {
+            bool ownerTransferSuccess = paymentToken.transfer(owner(), ownerShareAmount);
+            require(ownerTransferSuccess, "ERC20 transfer failed (contract -> owner)");
         }
+
+        prizePool.totalDeposited += requiredAmount;
+        emit PrizePoolUpdated(prizePool.totalDeposited);
+
+        uint256 startTokenId = tokenMintId;
+
+        for (uint256 i; i < mintLimit;) {
+            uint256 id = tokenMintId++;
+
+            StoredArrow storage arrow = _arrowsData.all[id];
+            arrow.seed = uint16(id);
+            arrow.divisorIndex = 0;
+
+            _generateTokenRandomness(id);
+
+            _safeMint(recipient, id);
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        unchecked {
+            _arrowsData.minted += uint32(mintLimit);
+        }
+
+        emit TokensMinted(recipient, startTokenId, mintLimit);
+    }
+
+    /// @notice Mint new Arrows tokens with a free mint if available
+    /// @param recipient The address to receive the tokens
+    function freeMint(address recipient) external {
+        require(address(paymentToken) != address(0), "Payment token not set");
+        require(recipient != address(0), "Invalid recipient");
+        require(!hasUsedFreeMint[msg.sender], "Free mint already used");
+
+        // Mark that this address has used its free mint
+        hasUsedFreeMint[msg.sender] = true;
+        emit FreeMintUsed(msg.sender);
 
         uint256 startTokenId = tokenMintId;
 
