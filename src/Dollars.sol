@@ -10,13 +10,14 @@ import "./libraries/Utilities.sol";
 import "./standards/ARROWS721.sol";
 import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import "lib/openzeppelin-contracts/contracts/security/Pausable.sol";
 
 /**
  * @title  Dollars
  * @author Hurls
  * @notice Up and to the right.
  */
-contract Dollars is IArrows, ARROWS721, Ownable {
+contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
     event MintPriceUpdated(uint256 newPrice);
     event MintLimitUpdated(uint8 newLimit);
     event PrizeClaimed(uint256 tokenId, address winner, uint256 amount);
@@ -32,6 +33,8 @@ contract Dollars is IArrows, ARROWS721, Ownable {
     event WinningColorSet(string colorHex, uint8 colorIndex);
     event FreeMintUsed(address indexed recipient);
     event TokensDeposited(address indexed sender, uint256 amount);
+    event ContractPaused(address indexed pauser);
+    event ContractUnpaused(address indexed unpauser);
 
     uint8 public mintLimit = 4;
     uint256 public constant MAX_COMPOSITE_LEVEL = 5;
@@ -81,9 +84,23 @@ contract Dollars is IArrows, ARROWS721, Ownable {
         winnerClaimPercentage = 20;
     }
 
+    /// @notice Pauses the contract, preventing certain operations
+    /// @dev Can only be called by the contract owner
+    function pause() external onlyOwner {
+        _pause();
+        emit ContractPaused(msg.sender);
+    }
+
+    /// @notice Unpauses the contract, allowing operations to resume
+    /// @dev Can only be called by the contract owner
+    function unpause() external onlyOwner {
+        _unpause();
+        emit ContractUnpaused(msg.sender);
+    }
+
     /// @notice Allow users to deposit tokens to the contract for minting
     /// @param amount The amount of tokens to deposit
-    function depositTokens(uint256 amount) external {
+    function depositTokens(uint256 amount) external whenNotPaused {
         require(address(paymentToken) != address(0), "Payment token not set");
         require(amount > 0, "Amount must be greater than 0");
 
@@ -173,7 +190,7 @@ contract Dollars is IArrows, ARROWS721, Ownable {
 
     /// @notice Mint new Arrows tokens using the specified ERC20 payment token
     /// @param recipient The address to receive the tokens
-    function mint(address recipient) external {
+    function mint(address recipient) external whenNotPaused {
         require(address(paymentToken) != address(0), "Payment token not set");
         require(recipient != address(0), "Invalid recipient");
 
@@ -222,7 +239,7 @@ contract Dollars is IArrows, ARROWS721, Ownable {
 
     /// @notice Mint new Arrows tokens with a free mint if available
     /// @param recipient The address to receive the tokens
-    function freeMint(address recipient) external {
+    function freeMint(address recipient) external whenNotPaused {
         require(address(paymentToken) != address(0), "Payment token not set");
         require(recipient != address(0), "Invalid recipient");
         require(!hasUsedFreeMint[msg.sender], "Free mint already used");
@@ -259,7 +276,7 @@ contract Dollars is IArrows, ARROWS721, Ownable {
     /// @notice Composite one token into another, mixing visuals and reducing arrow count
     /// @param tokenId The token ID to keep alive (its visual will change)
     /// @param burnId The token ID to composite into the kept token
-    function composite(uint256 tokenId, uint256 burnId) external {
+    function composite(uint256 tokenId, uint256 burnId) external whenNotPaused {
         _composite(tokenId, burnId);
         unchecked {
             ++_arrowsData.burned;
@@ -270,7 +287,7 @@ contract Dollars is IArrows, ARROWS721, Ownable {
     /// @notice Burn a single arrow token without compositing
     /// @param tokenId The token ID to burn
     /// @dev This is a common purpose burn method that does not affect other tokens
-    function burn(uint256 tokenId) external {
+    function burn(uint256 tokenId) external whenNotPaused {
         if (!_isApprovedOrOwner(msg.sender, tokenId)) {
             revert NotAllowed();
         }
@@ -480,7 +497,7 @@ contract Dollars is IArrows, ARROWS721, Ownable {
     /// @notice Claim a prize for a winning token
     /// @param tokenId The winning token ID to burn and claim prize for
     /// @dev The token must be a winning token (have exactly 1 arrow and the winning color)
-    function claimPrize(uint256 tokenId) external {
+    function claimPrize(uint256 tokenId) external whenNotPaused {
         require(_isApprovedOrOwner(msg.sender, tokenId), "Not token owner");
         require(isWinningToken(tokenId), "Not a winning token");
         require(address(paymentToken) != address(0), "Payment token not set");
