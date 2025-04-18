@@ -432,7 +432,12 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
         bool success = paymentToken.transfer(owner(), balance);
         require(success, "ERC20 transfer failed");
 
+        // Reset both accounting values since all funds are withdrawn
+        prizePool.totalDeposited = 0;
+        prizePool.actualAvailable = 0;
+
         emit EmergencyWithdrawn(balance);
+        emit PrizePoolUpdated(0);
     }
 
     /// @notice Get the current available prize pool balance (ERC20)
