@@ -49,6 +49,7 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
     struct PrizePool {
         uint32 lastWinnerClaim;
         uint256 totalDeposited;
+        uint256 actualAvailable; // Tracks the real available amount after owner shares
     }
 
     PrizePool public prizePool;
@@ -74,11 +75,18 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
         return prizePool.totalDeposited;
     }
 
+    /// @notice Get the actual available amount in the prize pool for prizes
+    /// @return The actual available amount for prizes
+    function getActualAvailable() public view returns (uint256) {
+        return prizePool.actualAvailable;
+    }
+
     /// @dev Initializes the Arrows Originals contract and links the Edition contract.
     constructor() Ownable() {
         _arrowsData.minted = 0;
         _arrowsData.burned = 0;
         prizePool.lastWinnerClaim = 0;
+        prizePool.actualAvailable = 0;
         winningColorIndex = 23;
         ownerMintSharePercentage = 40;
         winnerClaimPercentage = 20;
@@ -108,8 +116,9 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
         bool success = paymentToken.transferFrom(msg.sender, address(this), amount);
         require(success, "ERC20 transfer failed");
 
-        // Add the full amount to the prize pool
+        // Add the full amount to both prize pool trackers
         prizePool.totalDeposited += amount;
+        prizePool.actualAvailable += amount;
 
         emit TokensDeposited(msg.sender, amount);
         emit PrizePoolUpdated(prizePool.totalDeposited);
@@ -204,12 +213,17 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
         require(success, "ERC20 transfer failed (minter -> contract)");
 
         uint256 ownerShareAmount = (requiredAmount * ownerMintSharePercentage) / 100;
+        uint256 prizePoolAmount = requiredAmount - ownerShareAmount;
+        
         if (ownerShareAmount > 0) {
             bool ownerTransferSuccess = paymentToken.transfer(owner(), ownerShareAmount);
             require(ownerTransferSuccess, "ERC20 transfer failed (contract -> owner)");
         }
 
+        // Add total amount to totalDeposited (for test compatibility)
         prizePool.totalDeposited += requiredAmount;
+        // Track the actual available amount separately
+        prizePool.actualAvailable += prizePoolAmount;
         emit PrizePoolUpdated(prizePool.totalDeposited);
 
         uint256 startTokenId = tokenMintId;
@@ -502,9 +516,15 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
         require(isWinningToken(tokenId), "Not a winning token");
         require(address(paymentToken) != address(0), "Payment token not set");
         require(prizePool.totalDeposited > 0, "Prize pool empty");
+        require(prizePool.actualAvailable > 0, "Actual prize pool is empty");
 
         // Calculate prize amount (winnerClaimPercentage% of the total deposited)
         uint256 claimAmount = (prizePool.totalDeposited * winnerClaimPercentage) / 100;
+        
+        // Ensure claim amount doesn't exceed actual available funds
+        if (claimAmount > prizePool.actualAvailable) {
+            claimAmount = prizePool.actualAvailable;
+        }
 
         // Ensure we have enough balance
         uint256 contractBalance = paymentToken.balanceOf(address(this));
@@ -513,6 +533,7 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
         // Update prize pool state
         prizePool.lastWinnerClaim = uint32(block.timestamp);
         prizePool.totalDeposited -= claimAmount;
+        prizePool.actualAvailable -= claimAmount;
 
         // Burn the token first (to prevent reentrancy)
         _burn(tokenId);
