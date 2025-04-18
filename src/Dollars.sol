@@ -214,7 +214,7 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
 
         uint256 ownerShareAmount = (requiredAmount * ownerMintSharePercentage) / 100;
         uint256 prizePoolAmount = requiredAmount - ownerShareAmount;
-        
+
         if (ownerShareAmount > 0) {
             bool ownerTransferSuccess = paymentToken.transfer(owner(), ownerShareAmount);
             require(ownerTransferSuccess, "ERC20 transfer failed (contract -> owner)");
@@ -520,7 +520,7 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
 
         // Calculate prize amount (winnerClaimPercentage% of the total deposited)
         uint256 claimAmount = (prizePool.totalDeposited * winnerClaimPercentage) / 100;
-        
+
         // Ensure claim amount doesn't exceed actual available funds
         if (claimAmount > prizePool.actualAvailable) {
             claimAmount = prizePool.actualAvailable;
