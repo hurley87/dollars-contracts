@@ -30,6 +30,7 @@ contract Dollars is IArrows, ARROWS721, Ownable {
     event OwnerMintSharePercentageUpdated(uint8 newPercentage);
     event WinnerClaimPercentageUpdated(uint8 newPercentage);
     event WinningColorSet(string colorHex, uint8 colorIndex);
+    event FreeMintUsed(address indexed recipient);
 
     uint8 public mintLimit = 4;
     uint256 public constant MAX_COMPOSITE_LEVEL = 5;
@@ -50,6 +51,9 @@ contract Dollars is IArrows, ARROWS721, Ownable {
     uint8 public winningColorIndex;
     uint8 public ownerMintSharePercentage;
     uint8 public winnerClaimPercentage;
+
+    // Track addresses that have already used their free mint
+    mapping(address => bool) public hasUsedFreeMint;
 
     // Store token metadata directly instead of using epochs
     struct TokenMetadata {
@@ -158,19 +162,28 @@ contract Dollars is IArrows, ARROWS721, Ownable {
         uint256 requiredAmount = mintPrice * mintLimit;
         require(requiredAmount > 0, "Mint price cannot be zero");
 
-        uint256 allowance = paymentToken.allowance(msg.sender, address(this));
-        require(allowance >= requiredAmount, "Check allowance");
-        bool success = paymentToken.transferFrom(msg.sender, address(this), requiredAmount);
-        require(success, "ERC20 transfer failed (minter -> contract)");
+        bool isFreeMint = !hasUsedFreeMint[msg.sender];
+        
+        // If this is not a free mint, process payment
+        if (!isFreeMint) {
+            uint256 allowance = paymentToken.allowance(msg.sender, address(this));
+            require(allowance >= requiredAmount, "Check allowance");
+            bool success = paymentToken.transferFrom(msg.sender, address(this), requiredAmount);
+            require(success, "ERC20 transfer failed (minter -> contract)");
 
-        uint256 ownerShareAmount = (requiredAmount * ownerMintSharePercentage) / 100;
-        if (ownerShareAmount > 0) {
-            bool ownerTransferSuccess = paymentToken.transfer(owner(), ownerShareAmount);
-            require(ownerTransferSuccess, "ERC20 transfer failed (contract -> owner)");
+            uint256 ownerShareAmount = (requiredAmount * ownerMintSharePercentage) / 100;
+            if (ownerShareAmount > 0) {
+                bool ownerTransferSuccess = paymentToken.transfer(owner(), ownerShareAmount);
+                require(ownerTransferSuccess, "ERC20 transfer failed (contract -> owner)");
+            }
+
+            prizePool.totalDeposited += requiredAmount;
+            emit PrizePoolUpdated(prizePool.totalDeposited);
+        } else {
+            // Mark that this address has used its free mint
+            hasUsedFreeMint[msg.sender] = true;
+            emit FreeMintUsed(msg.sender);
         }
-
-        prizePool.totalDeposited += requiredAmount;
-        emit PrizePoolUpdated(prizePool.totalDeposited);
 
         uint256 startTokenId = tokenMintId;
 
