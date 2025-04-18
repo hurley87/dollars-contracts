@@ -228,7 +228,7 @@ library ArrowsArt {
 
         // Map over to get the colors.
         string[] memory arrowColors = new string[](indexes.length);
-        string[80] memory allColors = EightyColors.COLORS();
+        string[80] memory allColors = EightyColors.colors();
 
         // Always set the first color.
         arrowColors[0] = allColors[indexes[0]];
@@ -309,7 +309,6 @@ library ArrowsArt {
                     color,
                     '"',
                     "/>",
-                    '<path d="M25 15.12L15.41 24.34l2.86 2.73 4.68-4.53.005 12.36h4.14V22.54l4.7 4.53 2.8-2.73L25.08 15.12H25z" fill="black"/>',
                     "</g>",
                     "</g>"
                 )

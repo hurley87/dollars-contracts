@@ -5,9 +5,11 @@ import "./interfaces/IArrows.sol";
 import "./interfaces/IArrowsEdition.sol";
 import "./libraries/ArrowsArt.sol";
 import "./libraries/ArrowsMetadata.sol";
+import "./libraries/EightyColors.sol";
 import "./libraries/Utilities.sol";
 import "./standards/ARROWS721.sol";
 import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
+import "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title  Dollars
@@ -17,32 +19,46 @@ import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 contract Dollars is IArrows, ARROWS721, Ownable {
     event MintPriceUpdated(uint256 newPrice);
     event MintLimitUpdated(uint8 newLimit);
-    event WinnerPercentageUpdated(uint8 newPercentage);
     event PrizeClaimed(uint256 tokenId, address winner, uint256 amount);
-    event OwnerShareWithdrawn(uint256 amount);
-    event PrizePoolUpdated(uint256 totalDeposited, uint256 totalWithdrawn);
+    event PrizePoolUpdated(uint256 totalDeposited);
     event EmergencyWithdrawn(uint256 amount);
     event TokensMinted(address indexed recipient, uint256 startTokenId, uint256 count);
     event TokensComposited(uint256 indexed keptTokenId, uint256 indexed burnedTokenId);
     event TokenBurned(uint256 indexed tokenId, address indexed burner);
+    event WinningColorIndexUpdated(uint8 newIndex);
+    event PaymentTokenSet(address indexed tokenAddress, uint256 mintPrice);
+    event OwnerMintSharePercentageUpdated(uint8 newPercentage);
+    event WinnerClaimPercentageUpdated(uint8 newPercentage);
+    event WinningColorSet(string colorHex, uint8 colorIndex);
 
     uint8 public mintLimit = 4;
     uint256 public constant MAX_COMPOSITE_LEVEL = 5;
-    uint256 public mintPrice = 0.001 ether;
+    uint256 public mintPrice;
     uint256 public tokenMintId = 0;
+    IERC20 public paymentToken;
 
     /// @dev We use this database for persistent storage.
     Arrows _arrowsData;
 
     // Prize pool state
     struct PrizePool {
-        uint8 winnerPercentage; // Percentage for winner (1-99)
-        uint32 lastWinnerClaim; // Timestamp of last winner claim
-        uint256 totalDeposited; // Total ETH ever deposited
-        uint256 totalWithdrawn; // Total ETH withdrawn by owner
+        uint32 lastWinnerClaim;
+        uint256 totalDeposited;
     }
 
     PrizePool public prizePool;
+    uint8 public winningColorIndex;
+    uint8 public ownerMintSharePercentage;
+    uint8 public winnerClaimPercentage;
+
+    // Store token metadata directly instead of using epochs
+    struct TokenMetadata {
+        uint256 seed; // The final seed used for randomization
+        uint8[5] colorBands; // Color band values - Note: These seem unused now, consider removal?
+        uint8[5] gradients; // Gradient values - Note: These seem unused now, consider removal?
+    }
+
+    mapping(uint256 => TokenMetadata) private _tokenMetadata;
 
     /// @notice Get the total amount deposited in the prize pool
     /// @return The total amount deposited
@@ -50,40 +66,33 @@ contract Dollars is IArrows, ARROWS721, Ownable {
         return prizePool.totalDeposited;
     }
 
-    /// @notice Get the total amount withdrawn by the owner
-    /// @return The total amount withdrawn
-    function getTotalWithdrawn() public view returns (uint256) {
-        return prizePool.totalWithdrawn;
-    }
-
-    /// @notice Get the winner percentage from the prize pool
-    /// @return The winner percentage
-    function getWinnerPercentage() public view returns (uint8) {
-        return prizePool.winnerPercentage;
-    }
-
-    // Store token metadata directly instead of using epochs
-    struct TokenMetadata {
-        uint256 seed; // The final seed used for randomization
-        uint8[5] colorBands; // Color band values
-        uint8[5] gradients; // Gradient values
-    }
-
-    mapping(uint256 => TokenMetadata) private _tokenMetadata;
-
     /// @dev Initializes the Arrows Originals contract and links the Edition contract.
     constructor() Ownable() {
         _arrowsData.minted = 0;
         _arrowsData.burned = 0;
-        prizePool.winnerPercentage = 60; // Default 60% for winner
         prizePool.lastWinnerClaim = 0;
+        winningColorIndex = 23;
+        ownerMintSharePercentage = 40;
+        winnerClaimPercentage = 20;
     }
 
-    /// @notice Update the mint price
-    /// @param newPrice The new price in ETH
+    /// @notice Update the mint price (in terms of the payment token)
+    /// @param newPrice The new price in the smallest unit of the payment token
     function updateMintPrice(uint256 newPrice) external onlyOwner {
+        require(address(paymentToken) != address(0), "Payment token not set");
         mintPrice = newPrice;
         emit MintPriceUpdated(newPrice);
+    }
+
+    /// @notice Sets the ERC20 token used for payments and its mint price.
+    /// @param _tokenAddress The address of the ERC20 token contract.
+    /// @param _mintPrice The price to mint tokens, in the smallest unit of the ERC20 token.
+    function setPaymentToken(address _tokenAddress, uint256 _mintPrice) external onlyOwner {
+        require(_tokenAddress != address(0), "Invalid token address");
+        paymentToken = IERC20(_tokenAddress);
+        mintPrice = _mintPrice;
+        emit PaymentTokenSet(_tokenAddress, _mintPrice);
+        emit MintPriceUpdated(_mintPrice);
     }
 
     /// @notice Update the mint limit
@@ -94,13 +103,20 @@ contract Dollars is IArrows, ARROWS721, Ownable {
         emit MintLimitUpdated(newLimit);
     }
 
-    /// @notice Update the winner's percentage of the prize pool
-    /// @param newPercentage The new percentage (1-99)
-    function updateWinnerPercentage(uint8 newPercentage) external onlyOwner {
-        require(newPercentage > 0 && newPercentage < 100, "Invalid percentage");
-        require(block.timestamp >= uint256(prizePool.lastWinnerClaim) + 1 days, "Too soon after winner claim");
-        prizePool.winnerPercentage = newPercentage;
-        emit WinnerPercentageUpdated(newPercentage);
+    /// @notice Update the owner's percentage share received on each mint
+    /// @param newPercentage The new percentage (0-99)
+    function updateOwnerMintSharePercentage(uint8 newPercentage) external onlyOwner {
+        require(newPercentage < 100, "Percentage must be < 100");
+        ownerMintSharePercentage = newPercentage;
+        emit OwnerMintSharePercentageUpdated(newPercentage);
+    }
+
+    /// @notice Update the winner's percentage share of the current prize pool upon claim
+    /// @param newPercentage The new percentage (1-100)
+    function updateWinnerClaimPercentage(uint8 newPercentage) external onlyOwner {
+        require(newPercentage > 0 && newPercentage <= 100, "Percentage must be 1-100");
+        winnerClaimPercentage = newPercentage;
+        emit WinnerClaimPercentageUpdated(newPercentage);
     }
 
     /// @notice Generate randomness for a token at mint time
@@ -133,21 +149,31 @@ contract Dollars is IArrows, ARROWS721, Ownable {
         _arrowsData.all[tokenId].gradients[0] = gradient;
     }
 
-    /// @notice Mint new Arrows tokens
+    /// @notice Mint new Arrows tokens using the specified ERC20 payment token
     /// @param recipient The address to receive the tokens
-    function mint(address recipient) external payable {
+    function mint(address recipient) external {
+        require(address(paymentToken) != address(0), "Payment token not set");
         require(recipient != address(0), "Invalid recipient");
 
-        // Check if enough ETH was sent
-        require(msg.value >= mintPrice * mintLimit, "Insufficient payment");
+        uint256 requiredAmount = mintPrice * mintLimit;
+        require(requiredAmount > 0, "Mint price cannot be zero");
 
-        // Update prize pool
-        prizePool.totalDeposited += msg.value;
-        emit PrizePoolUpdated(prizePool.totalDeposited, prizePool.totalWithdrawn);
+        uint256 allowance = paymentToken.allowance(msg.sender, address(this));
+        require(allowance >= requiredAmount, "Check allowance");
+        bool success = paymentToken.transferFrom(msg.sender, address(this), requiredAmount);
+        require(success, "ERC20 transfer failed (minter -> contract)");
+
+        uint256 ownerShareAmount = (requiredAmount * ownerMintSharePercentage) / 100;
+        if (ownerShareAmount > 0) {
+            bool ownerTransferSuccess = paymentToken.transfer(owner(), ownerShareAmount);
+            require(ownerTransferSuccess, "ERC20 transfer failed (contract -> owner)");
+        }
+
+        prizePool.totalDeposited += requiredAmount;
+        emit PrizePoolUpdated(prizePool.totalDeposited);
 
         uint256 startTokenId = tokenMintId;
 
-        // Mint the tokens
         for (uint256 i; i < mintLimit;) {
             uint256 id = tokenMintId++;
 
@@ -155,7 +181,6 @@ contract Dollars is IArrows, ARROWS721, Ownable {
             arrow.seed = uint16(id);
             arrow.divisorIndex = 0;
 
-            // Generate immediate randomness for this token
             _generateTokenRandomness(id);
 
             _safeMint(recipient, id);
@@ -165,7 +190,6 @@ contract Dollars is IArrows, ARROWS721, Ownable {
             }
         }
 
-        // Keep track of how many arrows have been minted
         unchecked {
             _arrowsData.minted += uint32(mintLimit);
         }
@@ -247,12 +271,14 @@ contract Dollars is IArrows, ARROWS721, Ownable {
 
         // Generate new seed based on parents' seeds and resulting genes
         uint256 newSeed = uint256(
-            keccak256(abi.encodePacked(
-                _tokenMetadata[tokenId].seed,
-                _tokenMetadata[burnId].seed,
-                gradient, // Use resulting gradient
-                colorBand // Use resulting colorBand
-            ))
+            keccak256(
+                abi.encodePacked(
+                    _tokenMetadata[tokenId].seed,
+                    _tokenMetadata[burnId].seed,
+                    gradient, // Use resulting gradient
+                    colorBand // Use resulting colorBand
+                )
+            )
         ) % type(uint128).max;
 
         _tokenMetadata[tokenId].seed = newSeed;
@@ -305,85 +331,27 @@ contract Dollars is IArrows, ARROWS721, Ownable {
         );
     }
 
-    /// @notice Withdraw the owner's share of the prize pool
-    /// @dev Only callable by the contract owner
-    /// @dev Withdraws the available owner share based on total deposits and withdrawals
-    function withdrawOwnerShare() external onlyOwner {
-        uint256 availableToWithdraw = getAvailableOwnerWithdrawal();
-        require(availableToWithdraw > 0, "No new funds to withdraw");
-
-        (bool success,) = payable(owner()).call{value: availableToWithdraw}("");
-        require(success, "Transfer failed");
-
-        prizePool.totalWithdrawn += availableToWithdraw;
-        emit OwnerShareWithdrawn(availableToWithdraw);
-    }
-
-    /// @notice Claim the prize for a winning token
-    /// @param tokenId The token ID to check and claim
-    /// @dev Verifies token ownership, winning status, and available prize pool
-    /// @dev Burns the winning token and transfers the prize to the winner
-    function claimPrize(uint256 tokenId) external {
-        require(ownerOf(tokenId) == msg.sender, "Not token owner");
-        require(isWinningToken(tokenId), "Not a winning token");
-
-        uint256 winnerShare = getWinnerShare();
-        uint256 availableBalance = getAvailablePrizePool();
-        require(winnerShare > 0 && winnerShare <= availableBalance, "No prize available");
-
-        prizePool.totalDeposited -= winnerShare;
-        prizePool.lastWinnerClaim = uint32(block.timestamp);
-        _burn(tokenId);
-        unchecked {
-            ++_arrowsData.burned;
-        }
-
-        (bool success,) = payable(msg.sender).call{value: winnerShare}("");
-        require(success, "Transfer failed");
-
-        emit PrizeClaimed(tokenId, msg.sender, winnerShare);
-    }
-
     /// @notice Emergency withdrawal of all contract balance
     /// @dev Only callable by the contract owner
-    /// @dev Used in case of emergency to recover all funds
+    /// @dev Used in case of emergency to recover all funds (ERC20)
     function emergencyWithdraw() external onlyOwner {
-        uint256 balance = address(this).balance;
+        require(address(paymentToken) != address(0), "Payment token not set");
+        uint256 balance = paymentToken.balanceOf(address(this));
         require(balance > 0, "No funds to withdraw");
 
-        (bool success,) = payable(owner()).call{value: balance}("");
-        require(success, "Transfer failed");
+        bool success = paymentToken.transfer(owner(), balance);
+        require(success, "ERC20 transfer failed");
 
         emit EmergencyWithdrawn(balance);
     }
 
-    /// @notice Get the current available prize pool balance
-    /// @return The current contract balance
+    /// @notice Get the current available prize pool balance (ERC20)
+    /// @return The current contract balance of the payment token
     function getAvailablePrizePool() public view returns (uint256) {
-        return address(this).balance;
-    }
-
-    /// @notice Calculate the owner's share of the prize pool
-    /// @return The owner's share based on total deposits and winner percentage
-    function getOwnerShare() public view returns (uint256) {
-        unchecked {
-            return (prizePool.totalDeposited * (100 - prizePool.winnerPercentage)) / 100;
+        if (address(paymentToken) == address(0)) {
+            return 0;
         }
-    }
-
-    /// @notice Calculate the winner's share of the prize pool
-    /// @return The winner's share based on total deposits and winner percentage
-    function getWinnerShare() public view returns (uint256) {
-        unchecked {
-            return (prizePool.totalDeposited * prizePool.winnerPercentage) / 100;
-        }
-    }
-
-    /// @notice Calculate the available amount for owner withdrawal
-    /// @return The amount available for owner to withdraw
-    function getAvailableOwnerWithdrawal() public view returns (uint256) {
-        uint256 ownerShare = getOwnerShare();
-        return ownerShare > prizePool.totalWithdrawn ? ownerShare - prizePool.totalWithdrawn : 0;
+        return paymentToken.balanceOf(address(this));
     }
 
     /// @notice Check if a token is a winning token
@@ -397,6 +365,112 @@ contract Dollars is IArrows, ARROWS721, Ownable {
         if (arrow.arrowsCount != 1) return false;
 
         (string[] memory tokenColors,) = ArrowsArt.colors(arrow, _arrowsData);
-        return keccak256(abi.encodePacked(tokenColors[0])) == keccak256(abi.encodePacked("018A08"));
+        // Get the winning color string using the index
+        string memory winningColor = EightyColors.colors()[winningColorIndex];
+        // Compare the hash of the token's first color with the hash of the winning color string
+        return keccak256(abi.encodePacked(tokenColors[0])) == keccak256(abi.encodePacked(winningColor));
+    }
+
+    /**
+     * @notice Get the current winning color string
+     * @return The hex string of the current winning color
+     */
+    function getCurrentWinningColor() public view returns (string memory) {
+        return EightyColors.colors()[winningColorIndex];
+    }
+
+    /**
+     * @notice Get the color string for a given index.
+     * @param _index The index (0-79) of the color to retrieve.
+     * @return The hex string of the color at the specified index.
+     */
+    function getColorFromIndex(uint8 _index) public pure returns (string memory) {
+        // Calls the function in the library
+        return EightyColors.getColorByIndex(_index);
+    }
+
+    /**
+     * @notice Get the index for a given color string.
+     * @param _color The hex string of the color to find (must be one of the 80 colors).
+     * @return The index (0-79) of the color.
+     * @dev Reverts if the color is not found in the list.
+     */
+    function getIndexFromColor(string memory _color) public pure returns (uint8) {
+        // Calls the function in the library
+        return EightyColors.getIndexByColor(_color);
+    }
+
+    /// @notice Update the winning color index
+    /// @param newIndex The new index (0-79) for the winning color
+    function updateWinningColorIndex(uint8 newIndex) external onlyOwner {
+        require(newIndex < 80, "Index must be < 80");
+        winningColorIndex = newIndex;
+        emit WinningColorIndexUpdated(newIndex);
+    }
+
+    /// @notice Set the winning color by providing a hex color code
+    /// @param colorHex The hex string of the color (e.g., "FFA000")
+    /// @dev The color must be one of the 80 predefined colors in EightyColors
+    function setWinningColor(string memory colorHex) external onlyOwner {
+        uint8 colorIndex = EightyColors.getIndexByColor(colorHex);
+        winningColorIndex = colorIndex;
+        emit WinningColorSet(colorHex, colorIndex);
+        emit WinningColorIndexUpdated(colorIndex);
+    }
+
+    /// @notice Claim a prize for a winning token
+    /// @param tokenId The winning token ID to burn and claim prize for
+    /// @dev The token must be a winning token (have exactly 1 arrow and the winning color)
+    function claimPrize(uint256 tokenId) external {
+        require(_isApprovedOrOwner(msg.sender, tokenId), "Not token owner");
+        require(isWinningToken(tokenId), "Not a winning token");
+        require(address(paymentToken) != address(0), "Payment token not set");
+        require(prizePool.totalDeposited > 0, "Prize pool empty");
+
+        // Calculate prize amount (winnerClaimPercentage% of the total deposited)
+        uint256 claimAmount = (prizePool.totalDeposited * winnerClaimPercentage) / 100;
+
+        // Ensure we have enough balance
+        uint256 contractBalance = paymentToken.balanceOf(address(this));
+        require(contractBalance >= claimAmount, "Insufficient funds in contract");
+
+        // Update prize pool state
+        prizePool.lastWinnerClaim = uint32(block.timestamp);
+        prizePool.totalDeposited -= claimAmount;
+
+        // Burn the token first (to prevent reentrancy)
+        _burn(tokenId);
+        unchecked {
+            ++_arrowsData.burned;
+        }
+
+        // Transfer the prize to the winner
+        bool success = paymentToken.transfer(msg.sender, claimAmount);
+        require(success, "ERC20 transfer failed");
+
+        // Randomly select a new winning color
+        uint8 oldColorIndex = winningColorIndex;
+        uint8 newColorIndex;
+
+        // Generate random index and make sure it's different from the current one
+        do {
+            // Use keccak256 to generate pseudorandom number
+            uint256 randomSeed = uint256(
+                keccak256(
+                    abi.encodePacked(block.timestamp, block.prevrandao, msg.sender, tokenId, prizePool.lastWinnerClaim)
+                )
+            );
+            newColorIndex = uint8(randomSeed % 80); // There are 80 colors in EightyColors
+        } while (newColorIndex == oldColorIndex);
+
+        // Update the winning color index
+        winningColorIndex = newColorIndex;
+
+        // Emit events
+        emit PrizeClaimed(tokenId, msg.sender, claimAmount);
+        emit TokenBurned(tokenId, msg.sender);
+        emit PrizePoolUpdated(prizePool.totalDeposited);
+        emit WinningColorIndexUpdated(newColorIndex);
+        emit WinningColorSet(EightyColors.getColorByIndex(newColorIndex), newColorIndex);
     }
 }
