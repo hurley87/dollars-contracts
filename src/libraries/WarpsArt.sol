@@ -1,144 +1,120 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-import "../interfaces/IArrows.sol";
+import "../interfaces/IWarps.sol";
 import "./EightyColors.sol";
 import "./Utilities.sol";
 
 /**
- * /////////   ARROWS   /////////
- *  //                             //
- *  //                             //
- *  //                             //
- *  //       ↗ ↗ ↗ ↗ ↗ ↗ ↗ ↗       //
- *  //       ↗ ↗ ↗ ↗ ↗ ↗ ↗ ↗       //
- *  //       ↗ ↗ ↗ ↗ ↗ ↗ ↗ ↗       //
- *  //       ↗ ↗ ↗ ↗ ↗ ↗ ↗ ↗       //
- *  //       ↗ ↗ ↗ ↗ ↗ ↗ ↗ ↗       //
- *  //       ↗ ↗ ↗ ↗ ↗ ↗ ↗ ↗       //
- *  //       ↗ ↗ ↗ ↗ ↗ ↗ ↗ ↗       //
- *  //       ↗ ↗ ↗ ↗ ↗ ↗ ↗ ↗       //
- *  //       ↗ ↗ ↗ ↗ ↗ ↗ ↗ ↗       //
- *  //       ↗ ↗ ↗ ↗ ↗ ↗ ↗ ↗       //
- *  //       ↗ ↗ ↗ ↗ ↗ ↗ ↗ ↗       //
- *  //                             //
- *  //                             //
- *  //                             //
- *  /////   POINT UP & RIGHT   /////
- *
- * @title  ArrowsArt
- * @author VisualizeValue
- * @notice Renders the Arrows visuals.
+ * @title  WarpsArt
+ * @author Hurls
+ * @notice Renders the Warps visuals.
  */
-library ArrowsArt {
-    /// @dev The semiperfect divisors of the 80 arrows.
-    function DIVISORS() public pure returns (uint8[8] memory) {
+library WarpsArt {
+    /// @dev The semiperfect divisors of the 80 warps.
+    function divisors() public pure returns (uint8[8] memory) {
         return [4, 2, 1, 0, 0, 0, 0, 0];
     }
 
     /// @dev The different color band sizes that we use for the art.
-    function COLOR_BANDS() public pure returns (uint8[7] memory) {
+    function colorBands() public pure returns (uint8[7] memory) {
         return [80, 60, 40, 20, 10, 5, 1];
     }
 
     /// @dev The gradient increment steps.
-    function GRADIENTS() public pure returns (uint8[7] memory) {
+    function gradients() public pure returns (uint8[7] memory) {
         return [0, 1, 2, 5, 8, 9, 10];
     }
 
-    /// @dev Load a arrow from storage and fill its current state settings.
-    /// @param tokenId The id of the arrow to fetch.
-    /// @param arrows The DB containing all arrows.
-    function getArrow(uint256 tokenId, IArrows.Arrows storage arrows)
-        public
-        view
-        returns (IArrows.Arrow memory arrow)
-    {
-        IArrows.StoredArrow memory stored = arrows.all[tokenId];
+    /// @dev Load a warp from storage and fill its current state settings.
+    /// @param tokenId The id of the warp to fetch.
+    /// @param warps The DB containing all warps.
+    function getWarp(uint256 tokenId, IWarps.Warps storage warps) public view returns (IWarps.Warp memory warp) {
+        IWarps.StoredWarp memory stored = warps.all[tokenId];
 
-        return getArrow(tokenId, stored.divisorIndex, arrows);
+        return getWarp(tokenId, stored.divisorIndex, warps);
     }
 
-    /// @dev Load a arrow from storage and fill its current state settings.
-    /// @param tokenId The id of the arrow to fetch.
+    /// @dev Load a warp from storage and fill its current state settings.
+    /// @param tokenId The id of the warp to fetch.
     /// @param divisorIndex The divisorindex to get.
-    /// @param arrows The DB containing all arrows.
-    function getArrow(uint256 tokenId, uint8 divisorIndex, IArrows.Arrows storage arrows)
+    /// @param warps The DB containing all warps.
+    function getWarp(uint256 tokenId, uint8 divisorIndex, IWarps.Warps storage warps)
         public
         view
-        returns (IArrows.Arrow memory arrow)
+        returns (IWarps.Warp memory warp)
     {
-        IArrows.StoredArrow memory stored = arrows.all[tokenId];
+        IWarps.StoredWarp memory stored = warps.all[tokenId];
         stored.divisorIndex = divisorIndex; // Override in case we're fetching specific state.
-        arrow.stored = stored;
+        warp.stored = stored;
 
-        // Set up the source of randomness + seed for this Arrow.
-        arrow.seed = stored.seed;
+        // Set up the source of randomness + seed for this Warp.
+        warp.seed = stored.seed;
 
         // Helpers
-        arrow.isRoot = divisorIndex == 0;
-        arrow.hasManyArrows = divisorIndex < 6;
-        arrow.composite = !arrow.isRoot && divisorIndex < 7 ? stored.composites[divisorIndex - 1] : 0;
+        warp.isRoot = divisorIndex == 0;
+        warp.hasManyWarps = divisorIndex < 6;
+        warp.composite = !warp.isRoot && divisorIndex < 7 ? stored.composites[divisorIndex - 1] : 0;
 
         // Token properties
-        arrow.colorBand = colorBandIndex(arrow, divisorIndex);
-        arrow.gradient = gradientIndex(arrow, divisorIndex);
-        arrow.arrowsCount = DIVISORS()[divisorIndex];
+        warp.colorBand = colorBandIndex(warp, divisorIndex);
+        warp.gradient = gradientIndex(warp, divisorIndex);
+        warp.warpsCount = divisors()[divisorIndex];
     }
 
-    /// @dev Query the gradient of a given arrow at a certain arrow count.
-    /// @param arrow The arrow we want to get the gradient for.
-    /// @param divisorIndex The arrow divisor in question.
-    function gradientIndex(IArrows.Arrow memory arrow, uint8 divisorIndex) public pure returns (uint8) {
-        uint256 n = Utilities.random(arrow.seed, "gradient", 100);
+    /// @dev Query the gradient of a given warp at a certain warp count.
+    /// @param warp The warp we want to get the gradient for.
+    /// @param divisorIndex The warp divisor in question.
+    function gradientIndex(IWarps.Warp memory warp, uint8 divisorIndex) public pure returns (uint8) {
+        uint256 n = Utilities.random(warp.seed, "gradient", 100);
 
         return divisorIndex == 0
             ? n < 20 ? uint8(1 + (n % 6)) : 0
-            : divisorIndex < 6 ? arrow.stored.gradients[divisorIndex - 1] : 0;
+            : divisorIndex < 6 ? warp.stored.gradients[divisorIndex - 1] : 0;
     }
 
-    /// @dev Query the color band of a given arrow at a certain arrow count.
-    /// @param arrow The arrow we want to get the color band for.
-    /// @param divisorIndex The arrow divisor in question.
-    function colorBandIndex(IArrows.Arrow memory arrow, uint8 divisorIndex) public pure returns (uint8) {
-        uint256 n = Utilities.random(arrow.seed, "band", 120);
+    /// @dev Query the color band of a given warp at a certain warp count.
+    /// @param warp The warp we want to get the color band for.
+    /// @param divisorIndex The warp divisor in question.
+    function colorBandIndex(IWarps.Warp memory warp, uint8 divisorIndex) public pure returns (uint8) {
+        uint256 n = Utilities.random(warp.seed, "band", 120);
 
         return divisorIndex == 0
             ? (n > 80 ? 0 : n > 40 ? 1 : n > 20 ? 2 : n > 10 ? 3 : n > 4 ? 4 : n > 1 ? 5 : 6)
-            : divisorIndex < 6 ? arrow.stored.colorBands[divisorIndex - 1] : 6;
+            : divisorIndex < 6 ? warp.stored.colorBands[divisorIndex - 1] : 6;
     }
 
-    /// @dev Generate indexes for the color slots of arrow parents (up to the EightyColors.COLORS themselves).
+    /// @dev Generate indexes for the color slots of warp parents (up to the EightyColors.COLORS themselves).
     /// @param divisorIndex The current divisorIndex to query.
-    /// @param arrow The current arrow to investigate.
-    /// @param arrows The DB containing all arrows.
-    function colorIndexes(uint8 divisorIndex, IArrows.Arrow memory arrow, IArrows.Arrows storage arrows)
+    /// @param warp The current warp to investigate.
+    /// @param warps The DB containing all warps.
+    function colorIndexes(uint8 divisorIndex, IWarps.Warp memory warp, IWarps.Warps storage warps)
         public
         view
         returns (uint256[] memory)
     {
-        uint8[8] memory divisors = DIVISORS();
-        uint256 arrowsCount = divisors[divisorIndex];
-        uint256 seed = arrow.seed;
-        uint8 colorBand = COLOR_BANDS()[colorBandIndex(arrow, divisorIndex)];
-        uint8 gradient = GRADIENTS()[gradientIndex(arrow, divisorIndex)];
+        uint8[8] memory divisors_ = divisors();
+        uint256 warpsCount = divisors_[divisorIndex];
+        uint256 seed = warp.seed;
+        uint8 colorBand = colorBands()[colorBandIndex(warp, divisorIndex)];
+        uint8 gradient = gradients()[gradientIndex(warp, divisorIndex)];
 
-        // If we're a composited arrow, we choose colors only based on
+        // If we're a composited warp, we choose colors only based on
         // the slots available in our parents. Otherwise,
         // we choose based on our available spectrum.
-        uint256 possibleColorChoices = divisorIndex > 0 ? divisors[divisorIndex - 1] * 2 : 80;
+        uint256 possibleColorChoices = divisorIndex > 0 ? divisors_[divisorIndex - 1] * 2 : 80;
 
         // We initialize our index and select the first color
-        uint256[] memory indexes = new uint256[](arrowsCount);
+        uint256[] memory indexes = new uint256[](warpsCount);
         indexes[0] = Utilities.random(seed, possibleColorChoices);
 
-        // If we have more than one arrow, continue selecting colors
-        if (arrow.hasManyArrows) {
+        // If we have more than one warp, continue selecting colors
+        if (warp.hasManyWarps) {
             if (gradient > 0) {
-                // If we're a gradient arrow, we select based on the color band looping around
+                // If we're a gradient warp, we select based on the color band looping around
                 // the 80 possible colors
-                for (uint256 i = 1; i < arrowsCount;) {
-                    indexes[i] = (indexes[0] + (i * gradient * colorBand / arrowsCount) % colorBand) % 80;
+                for (uint256 i = 1; i < warpsCount;) {
+                    indexes[i] = (indexes[0] + (i * gradient * colorBand / warpsCount) % colorBand) % 80;
                     unchecked {
                         ++i;
                     }
@@ -146,15 +122,15 @@ library ArrowsArt {
             } else if (divisorIndex == 0) {
                 // If we select initial non gradient colors, we just take random ones
                 // available in our color band
-                for (uint256 i = 1; i < arrowsCount;) {
+                for (uint256 i = 1; i < warpsCount;) {
                     indexes[i] = (indexes[0] + Utilities.random(seed + i, colorBand)) % 80;
                     unchecked {
                         ++i;
                     }
                 }
             } else {
-                // If we have parent arrows, we select our colors from their set
-                for (uint256 i = 1; i < arrowsCount;) {
+                // If we have parent warps, we select our colors from their set
+                for (uint256 i = 1; i < warpsCount;) {
                     indexes[i] = Utilities.random(seed + i, possibleColorChoices);
                     unchecked {
                         ++i;
@@ -163,27 +139,27 @@ library ArrowsArt {
             }
         }
 
-        // We resolve our color indexes through our parent tree until we reach the root arrows
+        // We resolve our color indexes through our parent tree until we reach the root warps
         if (divisorIndex > 0) {
             uint8 previousDivisor = divisorIndex - 1;
 
-            // We already have our current arrow, but need the our parent state color indices
-            uint256[] memory parentIndexes = colorIndexes(previousDivisor, arrow, arrows);
+            // We already have our current warp, but need the our parent state color indices
+            uint256[] memory parentIndexes = colorIndexes(previousDivisor, warp, warps);
 
-            // We also need to fetch the colors of the arrow that was composited into us
-            IArrows.Arrow memory composited = getArrow(arrow.composite, previousDivisor, arrows);
-            uint256[] memory compositedIndexes = colorIndexes(previousDivisor, composited, arrows);
+            // We also need to fetch the colors of the warp that was composited into us
+            IWarps.Warp memory composited = getWarp(warp.composite, previousDivisor, warps);
+            uint256[] memory compositedIndexes = colorIndexes(previousDivisor, composited, warps);
 
             // Replace random indices with parent / root color indices
-            uint8 count = divisors[previousDivisor];
+            uint8 count = divisors_[previousDivisor];
 
             // We always select the first color from our parent
             uint256 initialBranchIndex = indexes[0] % count;
             indexes[0] = indexes[0] < count ? parentIndexes[initialBranchIndex] : compositedIndexes[initialBranchIndex];
 
-            // If we don't have a gradient, we continue resolving from our parent for the remaining arrows
+            // If we don't have a gradient, we continue resolving from our parent for the remaining warps
             if (gradient == 0) {
-                for (uint256 i; i < arrowsCount;) {
+                for (uint256 i; i < warpsCount;) {
                     uint256 branchIndex = indexes[i] % count;
                     indexes[i] = indexes[i] < count ? parentIndexes[branchIndex] : compositedIndexes[branchIndex];
 
@@ -191,10 +167,10 @@ library ArrowsArt {
                         ++i;
                     }
                 }
-                // If we have a gradient we base the remaining colors off our initial selection
             } else {
-                for (uint256 i = 1; i < arrowsCount;) {
-                    indexes[i] = (indexes[0] + (i * gradient * colorBand / arrowsCount) % colorBand) % 80;
+                // If we have a gradient we base the remaining colors off our initial selection
+                for (uint256 i = 1; i < warpsCount;) {
+                    indexes[i] = (indexes[0] + (i * gradient * colorBand / warpsCount) % colorBand) % 80;
 
                     unchecked {
                         ++i;
@@ -206,16 +182,16 @@ library ArrowsArt {
         return indexes;
     }
 
-    /// @dev Fetch all colors of a given Arrow.
-    /// @param arrow The arrow to get colors for.
-    /// @param arrows The DB containing all arrows.
-    function colors(IArrows.Arrow memory arrow, IArrows.Arrows storage arrows)
+    /// @dev Fetch all colors of a given Warp.
+    /// @param warp The warp to get colors for.
+    /// @param warps The DB containing all warps.
+    function colors(IWarps.Warp memory warp, IWarps.Warps storage warps)
         public
         view
         returns (string[] memory, uint256[] memory)
     {
-        // A fully composited arrow has no color.
-        if (arrow.stored.divisorIndex == 7) {
+        // A fully composited warp has no color.
+        if (warp.stored.divisorIndex == 7) {
             string[] memory zeroColors = new string[](1);
             uint256[] memory zeroIndexes = new uint256[](1);
             zeroColors[0] = "000";
@@ -224,54 +200,54 @@ library ArrowsArt {
         }
 
         // Fetch the indices on the original color mapping.
-        uint256[] memory indexes = colorIndexes(arrow.stored.divisorIndex, arrow, arrows);
+        uint256[] memory indexes = colorIndexes(warp.stored.divisorIndex, warp, warps);
 
         // Map over to get the colors.
-        string[] memory arrowColors = new string[](indexes.length);
+        string[] memory warpColors = new string[](indexes.length);
         string[80] memory allColors = EightyColors.colors();
 
         // Always set the first color.
-        arrowColors[0] = allColors[indexes[0]];
+        warpColors[0] = allColors[indexes[0]];
 
         // Resolve each additional check color via their index in EightyColors.COLORS.
         for (uint256 i = 1; i < indexes.length; i++) {
-            arrowColors[i] = allColors[indexes[i]];
+            warpColors[i] = allColors[indexes[i]];
         }
 
-        return (arrowColors, indexes);
+        return (warpColors, indexes);
     }
 
-    /// @dev Get the number of arrows we should display per row.
-    /// @param arrows The number of arrows in the piece.
-    function perRow(uint8 arrows) public pure returns (uint8) {
-        return arrows == 80 ? 8 : arrows >= 20 ? 4 : arrows == 10 || arrows == 4 ? 2 : 1;
+    /// @dev Get the number of warps we should display per row.
+    /// @param warps The number of warps in the piece.
+    function perRow(uint8 warps) public pure returns (uint8) {
+        return warps == 80 ? 8 : warps >= 20 ? 4 : warps == 10 || warps == 4 ? 2 : 1;
     }
 
-    /// @dev Get the X-offset for positioning arrow horizontally.
-    /// @param arrows The number of arrows in the piece.
-    function rowX(uint8 arrows) public pure returns (uint16) {
-        if (arrows == 2) {
-            return 310; // Adjusted value to center two arrows horizontally
+    /// @dev Get the X-offset for positioning warp horizontally.
+    /// @param warps The number of warps in the piece.
+    function rowX(uint8 warps) public pure returns (uint16) {
+        if (warps == 2) {
+            return 310; // Adjusted value to center two warps horizontally
         }
-        return arrows <= 1 ? 286 : arrows == 5 ? 304 : arrows == 10 || arrows == 4 ? 268 : 196;
+        return warps <= 1 ? 286 : warps == 5 ? 304 : warps == 10 || warps == 4 ? 268 : 196;
     }
 
-    /// @dev Get the Y-offset for positioning arrow vertically.
-    /// @param arrows The number of arrows in the piece.
-    function rowY(uint8 arrows) public pure returns (uint16) {
-        if (arrows == 2) {
-            return 270; // Adjusted value to center two arrows vertically
+    /// @dev Get the Y-offset for positioning warp vertically.
+    /// @param warps The number of warps in the piece.
+    function rowY(uint8 warps) public pure returns (uint16) {
+        if (warps == 2) {
+            return 270; // Adjusted value to center two warps vertically
         }
-        return arrows > 4 ? 160 : arrows == 4 ? 268 : arrows > 1 ? 304 : 286;
+        return warps > 4 ? 160 : warps == 4 ? 268 : warps > 1 ? 304 : 286;
     }
 
-    /// @dev Generate the SVG code for all arrows in a given token.
+    /// @dev Generate the SVG code for all warps in a given token.
     /// @param data The data object containing rendering settings.
-    function generateArrows(ArrowRenderData memory data) public pure returns (bytes memory) {
-        bytes memory arrowsBytes;
+    function generateWarps(WarpRenderData memory data) public pure returns (bytes memory) {
+        bytes memory warpsBytes;
 
-        uint8 arrowsCount = data.count;
-        for (uint8 i; i < arrowsCount; i++) {
+        uint8 warpsCount = data.count;
+        for (uint8 i; i < warpsCount; i++) {
             // Compute row settings.
             data.indexInRow = i % data.perRow;
             data.isNewRow = data.indexInRow == 0 && i > 0;
@@ -293,9 +269,9 @@ library ArrowsArt {
             string memory translateY = Utilities.uint2str(data.rowY);
             string memory color = data.colors[i];
 
-            // Render the current arrow.
-            arrowsBytes = abi.encodePacked(
-                arrowsBytes,
+            // Render the current   .
+            warpsBytes = abi.encodePacked(
+                warpsBytes,
                 abi.encodePacked(
                     '<g transform="translate(',
                     translateX,
@@ -327,31 +303,31 @@ library ArrowsArt {
             );
         }
 
-        return arrowsBytes;
+        return warpsBytes;
     }
 
     /// @dev Collect relevant rendering data for easy access across functions.
-    /// @param arrow Our current arrow loaded from storage.
-    /// @param arrows The DB containing all arrows.
-    function collectRenderData(IArrows.Arrow memory arrow, IArrows.Arrows storage arrows)
+    /// @param warp Our current warp loaded from storage.
+    /// @param warps The DB containing all warps.
+    function collectRenderData(IWarps.Warp memory warp, IWarps.Warps storage warps)
         public
         view
-        returns (ArrowRenderData memory data)
+        returns (WarpRenderData memory data)
     {
         // Carry through base settings.
-        data.arrow = arrow;
-        data.isBlack = arrow.stored.divisorIndex == 7;
-        data.count = data.isBlack ? 1 : DIVISORS()[arrow.stored.divisorIndex];
+        data.warp = warp;
+        data.isBlack = warp.stored.divisorIndex == 7;
+        data.count = data.isBlack ? 1 : divisors()[warp.stored.divisorIndex];
 
         // Compute colors and indexes.
-        (string[] memory colors_, uint256[] memory colorIndexes_) = colors(arrow, arrows);
+        (string[] memory colors_, uint256[] memory colorIndexes_) = colors(warp, warps);
         data.gridColor = "#000000";
         data.canvasColor = "#000000";
         data.colorIndexes = colorIndexes_;
         data.colors = colors_;
 
         // Compute positioning data.
-        data.scale = data.count > 20 ? "0.528" : data.count > 1 ? "1.8" : "2.8";
+        data.scale = data.count > 20 ? "0.528" : data.count > 1 ? "2" : "3";
         data.spaceX = data.count == 80 ? 36 : 72;
         data.spaceY = data.count > 20 ? 36 : 72;
         data.perRow = perRow(data.count);
@@ -360,7 +336,7 @@ library ArrowsArt {
         data.rowY = rowY(data.count);
     }
 
-    /// @dev Generate the SVG code for rows in the 8x10 Arrows grid.
+    /// @dev Generate the SVG code for rows in the 8x10 Warps grid.
     function generateGridRow() public pure returns (bytes memory) {
         bytes memory row;
         for (uint256 i; i < 8; i++) {
@@ -369,7 +345,7 @@ library ArrowsArt {
         return row;
     }
 
-    /// @dev Generate the SVG code for the entire 8x10 Arrows grid.
+    /// @dev Generate the SVG code for the entire 8x10 Warps grid.
     function generateGrid() public pure returns (bytes memory) {
         bytes memory grid;
         for (uint256 i; i < 10; i++) {
@@ -379,15 +355,11 @@ library ArrowsArt {
         return abi.encodePacked('<g id="grid" x="196" y="160">', grid, "</g>");
     }
 
-    /// @dev Generate the complete SVG code for a given Arrow.
-    /// @param arrow The arrow to render.
-    /// @param arrows The DB containing all arrows.
-    function generateSVG(IArrows.Arrow memory arrow, IArrows.Arrows storage arrows)
-        public
-        view
-        returns (bytes memory)
-    {
-        ArrowRenderData memory data = collectRenderData(arrow, arrows);
+    /// @dev Generate the complete SVG code for a given Warp.
+    /// @param warp The warp to render.
+    /// @param warps The DB containing all warps.
+    function generateSVG(IWarps.Warp memory warp, IWarps.Warps storage warps) public view returns (bytes memory) {
+        WarpRenderData memory data = collectRenderData(warp, warps);
 
         return abi.encodePacked(
             "<svg ",
@@ -407,15 +379,15 @@ library ArrowsArt {
             data.canvasColor,
             '"/>',
             generateGrid(),
-            generateArrows(data),
+            generateWarps(data),
             "</svg>"
         );
     }
 }
 
 /// @dev Bag holding all data relevant for rendering.
-struct ArrowRenderData {
-    IArrows.Arrow arrow;
+struct WarpRenderData {
+    IWarps.Warp warp;
     uint256[] colorIndexes;
     string[] colors;
     string canvasColor;

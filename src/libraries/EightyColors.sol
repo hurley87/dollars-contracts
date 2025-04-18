@@ -3,8 +3,8 @@ pragma solidity ^0.8.17;
 
 /**
  * @title  EightyColors
- * @author Hurlss
- * @notice The eighty colors of Arrows.
+ * @author Hurls
+ * @notice The eighty colors of Warps.
  */
 library EightyColors {
     /// @dev These are sorted in a gradient.

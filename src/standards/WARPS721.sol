@@ -1,5 +1,4 @@
-// SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts (last updated v4.8.0) (token/ERC721/ARROWS721.sol)
+// OpenZeppelin Contracts (last updated v4.8.0) (token/ERC721/WARPS721.sol)
 
 pragma solidity ^0.8.0;
 
@@ -17,7 +16,7 @@ import "../interfaces/IERC4906.sol";
  * @dev Implementation of https://eips.ethereum.org/EIPS/eip-721[ERC721] Non-Fungible Token Standard, including
  * the Metadata extension and the Enumerable extension.
  */
-contract ARROWS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumerable, IERC4906 {
+contract WARPS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumerable, IERC4906 {
     error ERC721__InvalidApproval();
     error ERC721__InvalidOwner();
     error ERC721__InvalidToken();
@@ -64,8 +63,8 @@ contract ARROWS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumerab
      * @dev Initializes the contract by setting a `name` and a `symbol` to the token collection.
      */
     constructor() {
-        _name = "Arrows";
-        _symbol = "ARROWS";
+        _name = "Warps";
+        _symbol = "WARPS";
     }
 
     /**
@@ -124,7 +123,7 @@ contract ARROWS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumerab
      * @dev See {IERC721-approve}.
      */
     function approve(address to, uint256 tokenId) public virtual override {
-        address owner = ARROWS721.ownerOf(tokenId);
+        address owner = WARPS721.ownerOf(tokenId);
 
         if (to == owner || (_msgSender() != owner && !isApprovedForAll(owner, _msgSender()))) {
             revert ERC721__InvalidApproval();
@@ -236,7 +235,7 @@ contract ARROWS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumerab
      * - `tokenId` must exist.
      */
     function _isApprovedOrOwner(address spender, uint256 tokenId) internal view virtual returns (bool) {
-        address owner = ARROWS721.ownerOf(tokenId);
+        address owner = WARPS721.ownerOf(tokenId);
         return (spender == owner || isApprovedForAll(owner, spender) || getApproved(tokenId) == spender);
     }
 
@@ -379,12 +378,12 @@ contract ARROWS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumerab
      * Emits a {Transfer} event.
      */
     function _burn(uint256 tokenId) internal virtual {
-        address owner = ARROWS721.ownerOf(tokenId);
+        address owner = WARPS721.ownerOf(tokenId);
 
         _beforeTokenTransfer(owner, address(0), tokenId, 1);
 
         // Update ownership in case tokenId was transferred by `_beforeTokenTransfer` hook
-        owner = ARROWS721.ownerOf(tokenId);
+        owner = WARPS721.ownerOf(tokenId);
 
         // Clear approvals
         delete _tokenApprovals[tokenId];
@@ -413,7 +412,7 @@ contract ARROWS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumerab
      * Emits a {Transfer} event.
      */
     function _transfer(address from, address to, uint256 tokenId) internal virtual {
-        if (ARROWS721.ownerOf(tokenId) != from) {
+        if (WARPS721.ownerOf(tokenId) != from) {
             revert ERC721__InvalidOwner();
         }
         if (to == address(0)) {
@@ -423,7 +422,7 @@ contract ARROWS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumerab
         _beforeTokenTransfer(from, to, tokenId, 1);
 
         // Check that tokenId was not transferred by `_beforeTokenTransfer` hook
-        if (ARROWS721.ownerOf(tokenId) != from) {
+        if (WARPS721.ownerOf(tokenId) != from) {
             revert ERC721__InvalidOwner();
         }
 
@@ -453,7 +452,7 @@ contract ARROWS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Enumerab
      */
     function _approve(address to, uint256 tokenId) internal virtual {
         _tokenApprovals[tokenId] = to;
-        emit Approval(ARROWS721.ownerOf(tokenId), to, tokenId);
+        emit Approval(WARPS721.ownerOf(tokenId), to, tokenId);
     }
 
     /**

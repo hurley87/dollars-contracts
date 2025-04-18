@@ -1,23 +1,22 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-import "./interfaces/IArrows.sol";
-import "./interfaces/IArrowsEdition.sol";
-import "./libraries/ArrowsArt.sol";
-import "./libraries/ArrowsMetadata.sol";
+import "./interfaces/IWarps.sol";
+import "./libraries/WarpsArt.sol";
+import "./libraries/WarpsMetadata.sol";
 import "./libraries/EightyColors.sol";
 import "./libraries/Utilities.sol";
-import "./standards/ARROWS721.sol";
+import "./standards/WARPS721.sol";
 import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import "lib/openzeppelin-contracts/contracts/security/Pausable.sol";
 
 /**
- * @title  Dollars
+ * @title  Warps
  * @author Hurls
  * @notice Up and to the right.
  */
-contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
+contract Warps is IWarps, WARPS721, Ownable, Pausable {
     event MintPriceUpdated(uint256 newPrice);
     event MintLimitUpdated(uint8 newLimit);
     event PrizeClaimed(uint256 tokenId, address winner, uint256 amount);
@@ -43,7 +42,7 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
     IERC20 public paymentToken;
 
     /// @dev We use this database for persistent storage.
-    Arrows _arrowsData;
+    Warps _warpsData;
 
     // Prize pool state
     struct PrizePool {
@@ -81,10 +80,10 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
         return prizePool.actualAvailable;
     }
 
-    /// @dev Initializes the Arrows Originals contract and links the Edition contract.
+    /// @dev Initializes the Warps contract and links the Edition contract.
     constructor() Ownable() {
-        _arrowsData.minted = 0;
-        _arrowsData.burned = 0;
+        _warpsData.minted = 0;
+        _warpsData.burned = 0;
         prizePool.lastWinnerClaim = 0;
         prizePool.actualAvailable = 0;
         winningColorIndex = 23;
@@ -171,7 +170,7 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
     /// @param tokenId The token ID to generate randomness for
     function _generateTokenRandomness(uint256 tokenId) internal {
         uint256 seed = uint256(
-            keccak256(abi.encodePacked(block.timestamp, block.prevrandao, tokenId, msg.sender, _arrowsData.minted))
+            keccak256(abi.encodePacked(block.timestamp, block.prevrandao, tokenId, msg.sender, _warpsData.minted))
         ) % type(uint128).max;
 
         // Store the seed for this token
@@ -193,11 +192,11 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
         uint8 gradient = scaledN2 < 20 ? uint8(1 + (scaledN2 % 6)) : 0;
 
         // Store the initial values
-        _arrowsData.all[tokenId].colorBands[0] = colorBand;
-        _arrowsData.all[tokenId].gradients[0] = gradient;
+        _warpsData.all[tokenId].colorBands[0] = colorBand;
+        _warpsData.all[tokenId].gradients[0] = gradient;
     }
 
-    /// @notice Mint new Arrows tokens using the specified ERC20 payment token
+    /// @notice Mint new Warps tokens using the specified ERC20 payment token
     /// @param recipient The address to receive the tokens
     function mint(address recipient) external whenNotPaused {
         require(address(paymentToken) != address(0), "Payment token not set");
@@ -231,9 +230,9 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
         for (uint256 i; i < mintLimit;) {
             uint256 id = tokenMintId++;
 
-            StoredArrow storage arrow = _arrowsData.all[id];
-            arrow.seed = uint16(id);
-            arrow.divisorIndex = 0;
+            StoredWarp storage warp = _warpsData.all[id];
+            warp.seed = uint16(id);
+            warp.divisorIndex = 0;
 
             _generateTokenRandomness(id);
 
@@ -245,13 +244,13 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
         }
 
         unchecked {
-            _arrowsData.minted += uint32(mintLimit);
+            _warpsData.minted += uint32(mintLimit);
         }
 
         emit TokensMinted(recipient, startTokenId, mintLimit);
     }
 
-    /// @notice Mint new Arrows tokens with a free mint if available
+    /// @notice Mint new Warps tokens with a free mint if available
     /// @param recipient The address to receive the tokens
     function freeMint(address recipient) external whenNotPaused {
         require(address(paymentToken) != address(0), "Payment token not set");
@@ -267,9 +266,9 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
         for (uint256 i; i < mintLimit;) {
             uint256 id = tokenMintId++;
 
-            StoredArrow storage arrow = _arrowsData.all[id];
-            arrow.seed = uint16(id);
-            arrow.divisorIndex = 0;
+            StoredWarp storage warp = _warpsData.all[id];
+            warp.seed = uint16(id);
+            warp.divisorIndex = 0;
 
             _generateTokenRandomness(id);
 
@@ -281,24 +280,24 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
         }
 
         unchecked {
-            _arrowsData.minted += uint32(mintLimit);
+            _warpsData.minted += uint32(mintLimit);
         }
 
         emit TokensMinted(recipient, startTokenId, mintLimit);
     }
 
-    /// @notice Composite one token into another, mixing visuals and reducing arrow count
+    /// @notice Composite one token into another, mixing visuals and reducing warp count
     /// @param tokenId The token ID to keep alive (its visual will change)
     /// @param burnId The token ID to composite into the kept token
     function composite(uint256 tokenId, uint256 burnId) external whenNotPaused {
         _composite(tokenId, burnId);
         unchecked {
-            ++_arrowsData.burned;
+            ++_warpsData.burned;
         }
         emit TokensComposited(tokenId, burnId);
     }
 
-    /// @notice Burn a single arrow token without compositing
+    /// @notice Burn a single warp token without compositing
     /// @param tokenId The token ID to burn
     /// @dev This is a common purpose burn method that does not affect other tokens
     function burn(uint256 tokenId) external whenNotPaused {
@@ -308,7 +307,7 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
 
         _burn(tokenId);
         unchecked {
-            ++_arrowsData.burned;
+            ++_warpsData.burned;
         }
         emit TokenBurned(tokenId, msg.sender);
     }
@@ -319,26 +318,26 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         _requireMinted(tokenId);
 
-        return ArrowsMetadata.tokenURI(tokenId, _arrowsData);
+        return WarpsMetadata.tokenURI(tokenId, _warpsData);
     }
 
-    /// @dev Get arrow with the stored seed instead of epoch-based randomness
-    function _getArrowWithSeed(uint256 tokenId) internal view returns (IArrows.Arrow memory) {
-        IArrows.Arrow memory arrow = ArrowsArt.getArrow(tokenId, _arrowsData);
+    /// @dev Get warp with the stored seed instead of epoch-based randomness
+    function _getWarpWithSeed(uint256 tokenId) internal view returns (IWarps.Warp memory) {
+        IWarps.Warp memory warp = WarpsArt.getWarp(tokenId, _warpsData);
 
         // Override the seed with our stored seed
         if (_tokenMetadata[tokenId].seed != 0) {
-            arrow.seed = _tokenMetadata[tokenId].seed;
+            warp.seed = _tokenMetadata[tokenId].seed;
         }
 
-        return arrow;
+        return warp;
     }
 
     /// @dev Composite one token into to another and burn it.
-    /// @param tokenId The token ID to keep. Its art and arrow-count will change.
+    /// @param tokenId The token ID to keep. Its art and warp-count will change.
     /// @param burnId The token ID to burn in the process.
     function _composite(uint256 tokenId, uint256 burnId) internal {
-        (StoredArrow storage toKeep,, uint8 divisorIndex) = _tokenOperation(tokenId, burnId);
+        (StoredWarp storage toKeep,, uint8 divisorIndex) = _tokenOperation(tokenId, burnId);
 
         uint8 nextDivisor = divisorIndex + 1;
 
@@ -346,7 +345,7 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
         uint8 gradient = 0;
         uint8 colorBand = 0;
 
-        // We only need to breed band + gradient up until 4-Arrows.
+        // We only need to breed band + gradient up until 4-Warps.
         if (divisorIndex < 5) {
             // Assign values from _compositeGenes
             (gradient, colorBand) = _compositeGenes(tokenId, burnId);
@@ -355,7 +354,7 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
             toKeep.gradients[divisorIndex] = gradient;
         }
 
-        // Composite our arrow
+        // Composite our warp
         toKeep.composites[divisorIndex] = uint16(burnId);
         toKeep.divisorIndex = nextDivisor;
 
@@ -377,7 +376,7 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
         _burn(burnId);
 
         // Notify DAPPs about the Composite.
-        emit Composite(tokenId, burnId, ArrowsArt.DIVISORS()[toKeep.divisorIndex]);
+        emit Composite(tokenId, burnId, WarpsArt.divisors()[toKeep.divisorIndex]);
         emit MetadataUpdate(tokenId);
     }
 
@@ -385,8 +384,8 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
     /// @param tokenId The token ID to keep.
     /// @param burnId The token ID to burn.
     function _compositeGenes(uint256 tokenId, uint256 burnId) internal view returns (uint8 gradient, uint8 colorBand) {
-        Arrow memory keeper = _getArrowWithSeed(tokenId);
-        Arrow memory burner = _getArrowWithSeed(burnId);
+        Warp memory keeper = _getWarpWithSeed(tokenId);
+        Warp memory burner = _getWarpWithSeed(burnId);
 
         // Pseudorandom gene manipulation.
         uint256 randomizer = uint256(keccak256(abi.encodePacked(keeper.seed, burner.seed)));
@@ -408,10 +407,10 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
     function _tokenOperation(uint256 tokenId, uint256 burnId)
         internal
         view
-        returns (StoredArrow storage toKeep, StoredArrow storage toBurn, uint8 divisorIndex)
+        returns (StoredWarp storage toKeep, StoredWarp storage toBurn, uint8 divisorIndex)
     {
-        toKeep = _arrowsData.all[tokenId];
-        toBurn = _arrowsData.all[burnId];
+        toKeep = _warpsData.all[tokenId];
+        toBurn = _warpsData.all[burnId];
         divisorIndex = toKeep.divisorIndex;
 
         require(
@@ -452,14 +451,14 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
     /// @notice Check if a token is a winning token
     /// @param tokenId The token ID to check
     /// @return bool True if the token is a winner, false otherwise
-    /// @dev A token is considered a winner if it has exactly 1 arrow and its first color is "018A08"
+    /// @dev A token is considered a winner if it has exactly 1 warp and its first color is "018A08"
     function isWinningToken(uint256 tokenId) public view returns (bool) {
         if (!_exists(tokenId)) return false;
 
-        Arrow memory arrow = _getArrowWithSeed(tokenId);
-        if (arrow.arrowsCount != 1) return false;
+        Warp memory warp = _getWarpWithSeed(tokenId);
+        if (warp.warpsCount != 1) return false;
 
-        (string[] memory tokenColors,) = ArrowsArt.colors(arrow, _arrowsData);
+        (string[] memory tokenColors,) = WarpsArt.colors(warp, _warpsData);
         // Get the winning color string using the index
         string memory winningColor = EightyColors.colors()[winningColorIndex];
         // Compare the hash of the token's first color with the hash of the winning color string
@@ -515,7 +514,7 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
 
     /// @notice Claim a prize for a winning token
     /// @param tokenId The winning token ID to burn and claim prize for
-    /// @dev The token must be a winning token (have exactly 1 arrow and the winning color)
+    /// @dev The token must be a winning token (have exactly 1 warp and the winning color)
     function claimPrize(uint256 tokenId) external whenNotPaused {
         require(_isApprovedOrOwner(msg.sender, tokenId), "Not token owner");
         require(isWinningToken(tokenId), "Not a winning token");
@@ -543,7 +542,7 @@ contract Dollars is IArrows, ARROWS721, Ownable, Pausable {
         // Burn the token first (to prevent reentrancy)
         _burn(tokenId);
         unchecked {
-            ++_arrowsData.burned;
+            ++_warpsData.burned;
         }
 
         // Transfer the prize to the winner
