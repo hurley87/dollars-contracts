@@ -121,12 +121,12 @@ contract WarpsTest is Test {
     }
 
     function testMint() public {
-        uint256 totalCost = _warps.mintPrice() * _warps.mintLimit();
-        uint256 ownerShare = (totalCost * _warps.ownerMintSharePercentage()) / 100;
-        uint256 prizePoolShare = totalCost - ownerShare;
+        uint256 mintPrice = _warps.mintPrice();
+        uint256 ownerShare = (mintPrice * _warps.ownerMintSharePercentage()) / 100;
+        uint256 prizePoolShare = mintPrice - ownerShare;
 
         vm.startPrank(_user1);
-        _paymentToken.approve(address(_warps), totalCost);
+        _paymentToken.approve(address(_warps), mintPrice);
         vm.stopPrank();
 
         uint256 initialUserBalance = _paymentToken.balanceOf(_user1);
@@ -148,7 +148,7 @@ contract WarpsTest is Test {
         uint256 finalUserNftBalance = _warps.balanceOf(_user1);
         uint8 currentMintLimit = _warps.mintLimit();
 
-        assertEq(initialUserBalance - finalUserBalance, totalCost, "User ERC20 balance should decrease by total cost");
+        assertEq(initialUserBalance - finalUserBalance, mintPrice, "User ERC20 balance should decrease by total cost");
         assertEq(
             finalOwnerBalance - initialOwnerBalance, ownerShare, "Owner ERC20 balance should increase by owner share"
         );
@@ -158,7 +158,7 @@ contract WarpsTest is Test {
             "Contract ERC20 balance should increase by prize pool share"
         );
         assertEq(
-            finalTotalDeposited - initialTotalDeposited, totalCost, "Total deposited should increase by total cost"
+            finalTotalDeposited - initialTotalDeposited, mintPrice, "Total deposited should increase by total cost"
         );
         assertEq(finalTokenId - initialTokenId, currentMintLimit, "Token mint ID should increase by mint limit");
         assertEq(
@@ -180,10 +180,10 @@ contract WarpsTest is Test {
     }
 
     function testMintInsufficientAllowance() public {
-        uint256 totalCost = _warps.mintPrice() * _warps.mintLimit();
+        uint256 mintPrice = _warps.mintPrice();
 
         vm.startPrank(_user1);
-        _paymentToken.approve(address(_warps), totalCost - 1);
+        _paymentToken.approve(address(_warps), mintPrice - 1);
         vm.stopPrank();
 
         vm.startPrank(_user1);
@@ -193,11 +193,11 @@ contract WarpsTest is Test {
     }
 
     function testMintInsufficientBalance() public {
-        uint256 totalCost = _warps.mintPrice() * _warps.mintLimit();
+        uint256 mintPrice = _warps.mintPrice();
         address userWithNoTokens = vm.addr(5);
 
         vm.startPrank(userWithNoTokens);
-        _paymentToken.approve(address(_warps), totalCost);
+        _paymentToken.approve(address(_warps), mintPrice);
         vm.stopPrank();
 
         vm.startPrank(userWithNoTokens);
@@ -206,31 +206,11 @@ contract WarpsTest is Test {
         vm.stopPrank();
     }
 
-    function _mintTokensForUser(address user, uint8 count) internal {
-        uint256 price = _warps.mintPrice();
-        uint8 limit = _warps.mintLimit();
-        require(count <= limit, "Cannot mint more than limit in one tx for setup");
-
-        bool limitChanged = false;
-        if (count != limit) {
-            vm.startPrank(_owner);
-            _warps.updateMintLimit(count);
-            vm.stopPrank();
-            limitChanged = true;
-        }
-
-        uint256 costForThisMint = price * count;
-
+    function _mintTokensForUser(address user, uint8 numTokens) internal {
         vm.startPrank(user);
-        _paymentToken.approve(address(_warps), costForThisMint);
+        _paymentToken.approve(address(_warps), _warps.mintPrice());
         _warps.mint(user);
         vm.stopPrank();
-
-        if (limitChanged) {
-            vm.startPrank(_owner);
-            _warps.updateMintLimit(limit);
-            vm.stopPrank();
-        }
     }
 
     function testComposite() public {
@@ -349,9 +329,9 @@ contract WarpsTest is Test {
     }
 
     function testPrizePoolAfterMint() public {
-        uint256 totalCost = _warps.mintPrice() * _warps.mintLimit();
-        uint256 ownerShare = (totalCost * _warps.ownerMintSharePercentage()) / 100;
-        uint256 prizePoolShare = totalCost - ownerShare;
+        uint256 mintPrice = _warps.mintPrice();
+        uint256 ownerShare = (mintPrice * _warps.ownerMintSharePercentage()) / 100;
+        uint256 prizePoolShare = mintPrice - ownerShare;
 
         uint256 initialTotalDeposited = _warps.getTotalDeposited();
         uint256 initialContractBalance = _paymentToken.balanceOf(address(_warps));
@@ -361,7 +341,7 @@ contract WarpsTest is Test {
         uint256 finalTotalDeposited = _warps.getTotalDeposited();
         uint256 finalContractBalance = _paymentToken.balanceOf(address(_warps));
 
-        assertEq(finalTotalDeposited - initialTotalDeposited, totalCost, "Total deposited should increase correctly");
+        assertEq(finalTotalDeposited - initialTotalDeposited, mintPrice, "Total deposited should increase correctly");
         assertEq(
             finalContractBalance - initialContractBalance,
             prizePoolShare,
@@ -484,9 +464,9 @@ contract WarpsTest is Test {
     function testGetAvailablePrizePool() public {
         assertEq(_warps.getAvailablePrizePool(), 0, "Initial prize pool should be 0");
 
-        uint256 totalCost = _warps.mintPrice() * _warps.mintLimit();
-        uint256 ownerShare = (totalCost * _warps.ownerMintSharePercentage()) / 100;
-        uint256 prizePoolShare = totalCost - ownerShare;
+        uint256 mintPrice = _warps.mintPrice();
+        uint256 ownerShare = (mintPrice * _warps.ownerMintSharePercentage()) / 100;
+        uint256 prizePoolShare = mintPrice - ownerShare;
         _mintTokensForUser(_user1, _warps.mintLimit());
 
         assertEq(_warps.getAvailablePrizePool(), prizePoolShare, "Prize pool balance incorrect after mint");
@@ -514,7 +494,7 @@ contract WarpsTest is Test {
 
         // Mint should be reverted when paused
         vm.startPrank(_user1);
-        _paymentToken.approve(address(_warps), _warps.mintPrice() * _warps.mintLimit());
+        _paymentToken.approve(address(_warps), _warps.mintPrice());
         vm.expectRevert("Pausable: paused");
         _warps.mint(_user1);
         vm.stopPrank();
@@ -575,9 +555,9 @@ contract WarpsTest is Test {
     }
 
     function testPrizePoolDualAccounting() public {
-        uint256 totalCost = _warps.mintPrice() * _warps.mintLimit();
-        uint256 ownerShare = (totalCost * _warps.ownerMintSharePercentage()) / 100;
-        uint256 prizePoolShare = totalCost - ownerShare;
+        uint256 mintPrice = _warps.mintPrice();
+        uint256 ownerShare = (mintPrice * _warps.ownerMintSharePercentage()) / 100;
+        uint256 prizePoolShare = mintPrice - ownerShare;
 
         uint256 initialTotalDeposited = _warps.getTotalDeposited();
         uint256 initialActualAvailable = _warps.getActualAvailable();
@@ -588,7 +568,7 @@ contract WarpsTest is Test {
         uint256 finalActualAvailable = _warps.getActualAvailable();
 
         // totalDeposited includes the full amount
-        assertEq(finalTotalDeposited - initialTotalDeposited, totalCost, "Total deposited should track full amount");
+        assertEq(finalTotalDeposited - initialTotalDeposited, mintPrice, "Total deposited should track full amount");
 
         // actualAvailable excludes the owner's share
         assertEq(

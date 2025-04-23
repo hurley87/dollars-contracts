@@ -13,7 +13,7 @@ import "./Utilities.sol";
 library WarpsArt {
     /// @dev The semiperfect divisors of the 80 warps.
     function divisors() public pure returns (uint8[8] memory) {
-        return [4, 2, 1, 0, 0, 0, 0, 0];
+        return [20, 10, 4, 1, 0, 0, 0, 0];
     }
 
     /// @dev The different color band sizes that we use for the art.

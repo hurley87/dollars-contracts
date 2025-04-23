@@ -202,7 +202,7 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
         require(address(paymentToken) != address(0), "Payment token not set");
         require(recipient != address(0), "Invalid recipient");
 
-        uint256 requiredAmount = mintPrice * mintLimit;
+        uint256 requiredAmount = mintPrice;
         require(requiredAmount > 0, "Mint price cannot be zero");
 
         // Process payment by default
