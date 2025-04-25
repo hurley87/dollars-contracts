@@ -2,7 +2,7 @@
 pragma solidity ^0.8.17;
 
 import "../interfaces/IWarps.sol";
-import "./EightyColors.sol";
+import "./WarpColors.sol";
 import "./Utilities.sol";
 
 /**
@@ -11,14 +11,14 @@ import "./Utilities.sol";
  * @notice Renders the Warps visuals.
  */
 library WarpsArt {
-    /// @dev The semiperfect divisors of the 80 warps.
+    /// @dev The semiperfect divisors of the 20 warps.
     function divisors() public pure returns (uint8[8] memory) {
-        return [20, 10, 4, 1, 0, 0, 0, 0];
+        return [20, 4, 1, 0, 0, 0, 0, 0];
     }
 
     /// @dev The different color band sizes that we use for the art.
     function colorBands() public pure returns (uint8[7] memory) {
-        return [80, 60, 40, 20, 10, 5, 1];
+        return [10, 8, 6, 4, 2, 1, 0];
     }
 
     /// @dev The gradient increment steps.
@@ -77,14 +77,14 @@ library WarpsArt {
     /// @param warp The warp we want to get the color band for.
     /// @param divisorIndex The warp divisor in question.
     function colorBandIndex(IWarps.Warp memory warp, uint8 divisorIndex) public pure returns (uint8) {
-        uint256 n = Utilities.random(warp.seed, "band", 120);
+        uint256 n = Utilities.random(warp.seed, "band", 10);
 
         return divisorIndex == 0
-            ? (n > 80 ? 0 : n > 40 ? 1 : n > 20 ? 2 : n > 10 ? 3 : n > 4 ? 4 : n > 1 ? 5 : 6)
-            : divisorIndex < 6 ? warp.stored.colorBands[divisorIndex - 1] : 6;
+            ? (n > 5 ? 2 : 3) // Return either index 2 (6 colors) or 3 (4 colors)
+            : divisorIndex < 6 ? warp.stored.colorBands[divisorIndex - 1] : 4;
     }
 
-    /// @dev Generate indexes for the color slots of warp parents (up to the EightyColors.COLORS themselves).
+    /// @dev Generate indexes for the color slots of warp parents (up to the WarpColors.COLORS themselves).
     /// @param divisorIndex The current divisorIndex to query.
     /// @param warp The current warp to investigate.
     /// @param warps The DB containing all warps.
@@ -102,7 +102,7 @@ library WarpsArt {
         // If we're a composited warp, we choose colors only based on
         // the slots available in our parents. Otherwise,
         // we choose based on our available spectrum.
-        uint256 possibleColorChoices = divisorIndex > 0 ? divisors_[divisorIndex - 1] * 2 : 80;
+        uint256 possibleColorChoices = divisorIndex > 0 ? divisors_[divisorIndex - 1] * 2 : 7;
 
         // We initialize our index and select the first color
         uint256[] memory indexes = new uint256[](warpsCount);
@@ -112,9 +112,9 @@ library WarpsArt {
         if (warp.hasManyWarps) {
             if (gradient > 0) {
                 // If we're a gradient warp, we select based on the color band looping around
-                // the 80 possible colors
+                // the 20 possible colors
                 for (uint256 i = 1; i < warpsCount;) {
-                    indexes[i] = (indexes[0] + (i * gradient * colorBand / warpsCount) % colorBand) % 80;
+                    indexes[i] = (indexes[0] + (i * gradient * colorBand / warpsCount) % colorBand) % 7;
                     unchecked {
                         ++i;
                     }
@@ -123,7 +123,7 @@ library WarpsArt {
                 // If we select initial non gradient colors, we just take random ones
                 // available in our color band
                 for (uint256 i = 1; i < warpsCount;) {
-                    indexes[i] = (indexes[0] + Utilities.random(seed + i, colorBand)) % 80;
+                    indexes[i] = (indexes[0] + Utilities.random(seed + i, colorBand)) % 7;
                     unchecked {
                         ++i;
                     }
@@ -170,7 +170,7 @@ library WarpsArt {
             } else {
                 // If we have a gradient we base the remaining colors off our initial selection
                 for (uint256 i = 1; i < warpsCount;) {
-                    indexes[i] = (indexes[0] + (i * gradient * colorBand / warpsCount) % colorBand) % 80;
+                    indexes[i] = (indexes[0] + (i * gradient * colorBand / warpsCount) % colorBand) % 7;
 
                     unchecked {
                         ++i;
@@ -204,12 +204,12 @@ library WarpsArt {
 
         // Map over to get the colors.
         string[] memory warpColors = new string[](indexes.length);
-        string[80] memory allColors = EightyColors.colors();
+        string[7] memory allColors = WarpColors.colors();
 
         // Always set the first color.
         warpColors[0] = allColors[indexes[0]];
 
-        // Resolve each additional check color via their index in EightyColors.COLORS.
+        // Resolve each additional check color via their index in WarpColors.COLORS.
         for (uint256 i = 1; i < indexes.length; i++) {
             warpColors[i] = allColors[indexes[i]];
         }
@@ -327,7 +327,7 @@ library WarpsArt {
         data.colors = colors_;
 
         // Compute positioning data.
-        data.scale = data.count > 20 ? "0.528" : data.count > 1 ? "2" : "3";
+        data.scale = data.count > 20 ? "1.2" : data.count > 1 ? "2" : "3";
         data.spaceX = data.count == 80 ? 36 : 72;
         data.spaceY = data.count > 20 ? 36 : 72;
         data.perRow = perRow(data.count);
@@ -360,6 +360,61 @@ library WarpsArt {
     /// @param warps The DB containing all warps.
     function generateSVG(IWarps.Warp memory warp, IWarps.Warps storage warps) public view returns (bytes memory) {
         WarpRenderData memory data = collectRenderData(warp, warps);
+
+        return abi.encodePacked(
+            "<svg ",
+            'viewBox="0 0 680 680" ',
+            'fill="none" xmlns="http://www.w3.org/2000/svg" ',
+            'style="width:100%;background:black;"',
+            ">",
+            "<defs>",
+            '<rect id="square" width="36" height="36" stroke="',
+            data.gridColor,
+            '"></rect>',
+            '<g id="row">',
+            generateGridRow(),
+            "</g>" "</defs>",
+            '<rect width="680" height="680" fill="black"/>',
+            '<rect x="188" y="152" width="304" height="376" fill="',
+            data.canvasColor,
+            '"/>',
+            generateGrid(),
+            generateWarps(data),
+            "</svg>"
+        );
+    }
+
+    /*────────────────────────── Palette Support ─────────────────────────*/
+
+    /// @dev Convert a packed uint24 RGB into 6-character hex string (no prefix).
+    function _uint24ToHex(uint24 value) internal pure returns (string memory) {
+        bytes16 symbols = "0123456789abcdef";
+        bytes memory buffer = new bytes(6);
+        for (uint256 i; i < 6; ++i) {
+            buffer[5 - i] = symbols[value & 0xF];
+            value >>= 4;
+        }
+        return string(buffer);
+    }
+
+    /// @notice Generate SVG strictly using provided palette colours.
+    /// @param warp The warp to render.
+    /// @param warps Global warps storage.
+    /// @param palette Array of packed uint24 RGB colours.
+    function generateSVGWithPalette(IWarps.Warp memory warp, IWarps.Warps storage warps, uint24[] memory palette)
+        public
+        view
+        returns (bytes memory)
+    {
+        WarpRenderData memory data = collectRenderData(warp, warps);
+
+        // Build colour strings cycling through palette.
+        uint256 len = data.count;
+        string[] memory custom = new string[](len);
+        for (uint256 i; i < len; ++i) {
+            custom[i] = _uint24ToHex(palette[i % palette.length]);
+        }
+        data.colors = custom;
 
         return abi.encodePacked(
             "<svg ",

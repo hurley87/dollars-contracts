@@ -62,8 +62,8 @@ contract WarpsTest is Test {
     uint256 _initialMintPrice = 100 * 10 ** 18;
     uint8 _initialMintLimit = 4;
     uint8 _initialOwnerPercentage = 40;
-    uint8 _initialWinnerPercentage = 20;
-    uint8 _initialWinningColorIndex = 23;
+    uint8 _initialWinnerPercentage = 5;
+    uint8 _initialWinningColorIndex = 4;
 
     function setUp() public {
         _owner = vm.addr(1);
@@ -208,8 +208,19 @@ contract WarpsTest is Test {
 
     function _mintTokensForUser(address user, uint8 numTokens) internal {
         vm.startPrank(user);
-        _paymentToken.approve(address(_warps), _warps.mintPrice());
-        _warps.mint(user);
+        _paymentToken.approve(
+            address(_warps), _warps.mintPrice() * ((numTokens + _warps.mintLimit() - 1) / _warps.mintLimit())
+        );
+
+        uint8 remaining = numTokens;
+        while (remaining > 0) {
+            _warps.mint(user);
+            if (remaining <= _warps.mintLimit()) {
+                break;
+            }
+            remaining -= _warps.mintLimit();
+        }
+
         vm.stopPrank();
     }
 
@@ -440,22 +451,22 @@ contract WarpsTest is Test {
     }
 
     function testGetColorFunctions() public {
-        string memory expectedWinningColor = "029F0E";
-        uint8 expectedWinningIndex = 23;
+        string memory expectedWinningColor = "2BDE73"; // Kickstarter Green at index 4
+        uint8 expectedWinningIndex = 4; // Correct index for Kickstarter Green
 
         assertEq(_warps.getCurrentWinningColor(), expectedWinningColor, "Incorrect current winning color");
-        assertEq(_warps.getColorFromIndex(expectedWinningIndex), expectedWinningColor, "Incorrect color from index 23");
+        assertEq(_warps.getColorFromIndex(expectedWinningIndex), expectedWinningColor, "Incorrect color from index 4");
         assertEq(
-            _warps.getIndexFromColor(expectedWinningColor), expectedWinningIndex, "Incorrect index from color 029F0E"
+            _warps.getIndexFromColor(expectedWinningColor), expectedWinningIndex, "Incorrect index from color 2BDE73"
         );
 
-        string memory color0 = "2D0157";
+        string memory color0 = "FF007A"; // Uniswap Pink
         assertEq(_warps.getColorFromIndex(0), color0, "Incorrect color for index 0");
-        assertEq(_warps.getIndexFromColor(color0), 0, "Incorrect index for color 2D0157");
+        assertEq(_warps.getIndexFromColor(color0), 0, "Incorrect index for color FF007A");
 
-        string memory color79 = "7D47B7";
-        assertEq(_warps.getColorFromIndex(79), color79, "Incorrect color for index 79");
-        assertEq(_warps.getIndexFromColor(color79), 79, "Incorrect index for color 7D47B7");
+        string memory color6 = "FFFFFF"; // White - Last color in the array
+        assertEq(_warps.getColorFromIndex(6), color6, "Incorrect color for index 6");
+        assertEq(_warps.getIndexFromColor(color6), 6, "Incorrect index for color FFFFFF");
 
         vm.expectRevert("Color not found");
         _warps.getIndexFromColor("123456");

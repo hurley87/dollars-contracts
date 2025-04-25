@@ -4,7 +4,7 @@ pragma solidity ^0.8.17;
 import "./interfaces/IWarps.sol";
 import "./libraries/WarpsArt.sol";
 import "./libraries/WarpsMetadata.sol";
-import "./libraries/EightyColors.sol";
+import "./libraries/WarpColors.sol";
 import "./libraries/Utilities.sol";
 import "./standards/WARPS721.sol";
 import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
@@ -68,6 +68,14 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
 
     mapping(uint256 => TokenMetadata) private _tokenMetadata;
 
+    // Add on-chain palette storage per token
+    struct Palette {
+        uint8 len; // 3 → 2 → 1
+        uint24[3] colors; // unused slots stay 0
+    }
+
+    mapping(uint256 => Palette) private _palette;
+
     /// @notice Get the total amount deposited in the prize pool
     /// @return The total amount deposited
     function getTotalDeposited() public view returns (uint256) {
@@ -86,9 +94,9 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
         _warpsData.burned = 0;
         prizePool.lastWinnerClaim = 0;
         prizePool.actualAvailable = 0;
-        winningColorIndex = 23;
+        winningColorIndex = 4; // Set to a valid index (2BDE73 - Kickstarter Green, index 4)
         ownerMintSharePercentage = 40;
-        winnerClaimPercentage = 20;
+        winnerClaimPercentage = 5;
     }
 
     /// @notice Pauses the contract, preventing certain operations
@@ -110,6 +118,10 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
     function depositTokens(uint256 amount) external whenNotPaused {
         require(address(paymentToken) != address(0), "Payment token not set");
         require(amount > 0, "Amount must be greater than 0");
+
+        // Check if user has approved the contract to spend their tokens
+        uint256 allowance = paymentToken.allowance(msg.sender, address(this));
+        require(allowance >= amount, "Check allowance");
 
         // Transfer tokens from the user to this contract
         bool success = paymentToken.transferFrom(msg.sender, address(this), amount);
@@ -237,6 +249,7 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
             _generateTokenRandomness(id);
 
             _safeMint(recipient, id);
+            _initPalette(id, recipient);
 
             unchecked {
                 ++i;
@@ -273,6 +286,7 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
             _generateTokenRandomness(id);
 
             _safeMint(recipient, id);
+            _initPalette(id, recipient);
 
             unchecked {
                 ++i;
@@ -318,7 +332,39 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         _requireMinted(tokenId);
 
-        return WarpsMetadata.tokenURI(tokenId, _warpsData);
+        // Build warp object
+        IWarps.Warp memory warp = WarpsArt.getWarp(tokenId, _warpsData);
+
+        // Load palette
+        Palette storage palStore = _palette[tokenId];
+        uint24[] memory pal = new uint24[](palStore.len);
+        for (uint8 i; i < palStore.len; ++i) {
+            pal[i] = palStore.colors[i];
+        }
+
+        // Generate SVG based on palette (fallback to default if none)
+        bytes memory staticSvg = pal.length > 0
+            ? WarpsArt.generateSVGWithPalette(warp, _warpsData, pal)
+            : WarpsArt.generateSVG(warp, _warpsData);
+
+        // Prepare JSON metadata
+        bytes memory metadata = abi.encodePacked(
+            "{",
+            '"name": "Warps ',
+            Utilities.uint2str(tokenId),
+            '",',
+            '"description": "Up and to the right.",',
+            '"image": ',
+            '"data:image/svg+xml;base64,',
+            Base64.encode(staticSvg),
+            '",',
+            '"attributes": [',
+            WarpsMetadata.attributes(warp),
+            "]",
+            "}"
+        );
+
+        return string(abi.encodePacked("data:application/json;base64,", Base64.encode(metadata)));
     }
 
     /// @dev Get warp with the stored seed instead of epoch-based randomness
@@ -353,6 +399,9 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
             toKeep.colorBands[divisorIndex] = colorBand;
             toKeep.gradients[divisorIndex] = gradient;
         }
+
+        // Update on-chain palette before finalizing composite
+        _updatePaletteOnComposite(tokenId, burnId, divisorIndex);
 
         // Composite our warp
         toKeep.composites[divisorIndex] = uint16(burnId);
@@ -451,18 +500,22 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
     /// @notice Check if a token is a winning token
     /// @param tokenId The token ID to check
     /// @return bool True if the token is a winner, false otherwise
-    /// @dev A token is considered a winner if it has exactly 1 warp and its first color is "018A08"
+    /// @dev A token is considered a winner if it has exactly 1 warp and its first palette colour matches
+    ///      the current `winningColorIndex` from `WarpColors`.
     function isWinningToken(uint256 tokenId) public view returns (bool) {
+        // Ensure token exists
         if (!_exists(tokenId)) return false;
 
+        // Winning rule still requires a single–warp token
         Warp memory warp = _getWarpWithSeed(tokenId);
         if (warp.warpsCount != 1) return false;
 
-        (string[] memory tokenColors,) = WarpsArt.colors(warp, _warpsData);
-        // Get the winning color string using the index
-        string memory winningColor = EightyColors.colors()[winningColorIndex];
-        // Compare the hash of the token's first color with the hash of the winning color string
-        return keccak256(abi.encodePacked(tokenColors[0])) == keccak256(abi.encodePacked(winningColor));
+        // Fetch palette and ensure it is initialised
+        Palette storage p = _palette[tokenId];
+        if (p.len == 0) return false;
+
+        // Compare first palette colour with the canonical winning colour code
+        return p.colors[0] == _warpColorCode(winningColorIndex);
     }
 
     /**
@@ -470,43 +523,43 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
      * @return The hex string of the current winning color
      */
     function getCurrentWinningColor() public view returns (string memory) {
-        return EightyColors.colors()[winningColorIndex];
+        return WarpColors.colors()[winningColorIndex];
     }
 
     /**
      * @notice Get the color string for a given index.
-     * @param _index The index (0-79) of the color to retrieve.
+     * @param _index The index (0-6) of the color to retrieve.
      * @return The hex string of the color at the specified index.
      */
     function getColorFromIndex(uint8 _index) public pure returns (string memory) {
         // Calls the function in the library
-        return EightyColors.getColorByIndex(_index);
+        return WarpColors.getColorByIndex(_index);
     }
 
     /**
      * @notice Get the index for a given color string.
-     * @param _color The hex string of the color to find (must be one of the 80 colors).
-     * @return The index (0-79) of the color.
+     * @param _color The hex string of the color to find (must be one of the 7 colors).
+     * @return The index (0-6) of the color.
      * @dev Reverts if the color is not found in the list.
      */
     function getIndexFromColor(string memory _color) public pure returns (uint8) {
         // Calls the function in the library
-        return EightyColors.getIndexByColor(_color);
+        return WarpColors.getIndexByColor(_color);
     }
 
     /// @notice Update the winning color index
-    /// @param newIndex The new index (0-79) for the winning color
+    /// @param newIndex The new index (0-6) for the winning color
     function updateWinningColorIndex(uint8 newIndex) external onlyOwner {
-        require(newIndex < 80, "Index must be < 80");
+        require(newIndex < 7, "Index must be < 7");
         winningColorIndex = newIndex;
         emit WinningColorIndexUpdated(newIndex);
     }
 
     /// @notice Set the winning color by providing a hex color code
     /// @param colorHex The hex string of the color (e.g., "FFA000")
-    /// @dev The color must be one of the 80 predefined colors in EightyColors
+    /// @dev The color must be one of the 7 predefined colors in WarpColors
     function setWinningColor(string memory colorHex) external onlyOwner {
-        uint8 colorIndex = EightyColors.getIndexByColor(colorHex);
+        uint8 colorIndex = WarpColors.getIndexByColor(colorHex);
         winningColorIndex = colorIndex;
         emit WinningColorSet(colorHex, colorIndex);
         emit WinningColorIndexUpdated(colorIndex);
@@ -522,6 +575,10 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
         require(prizePool.totalDeposited > 0, "Prize pool empty");
         require(prizePool.actualAvailable > 0, "Actual prize pool is empty");
 
+        // Check actual contract balance first to ensure we have tokens
+        uint256 contractBalance = paymentToken.balanceOf(address(this));
+        require(contractBalance > 0, "No tokens in contract");
+
         // Calculate prize amount (winnerClaimPercentage% of the total deposited)
         uint256 claimAmount = (prizePool.totalDeposited * winnerClaimPercentage) / 100;
 
@@ -530,9 +587,8 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
             claimAmount = prizePool.actualAvailable;
         }
 
-        // Ensure we have enough balance
-        uint256 contractBalance = paymentToken.balanceOf(address(this));
-        require(contractBalance >= claimAmount, "Insufficient funds in contract");
+        // Ensure we have enough balance for the specific claim amount
+        require(contractBalance >= claimAmount, "Insufficient tokens for prize claim");
 
         // Update prize pool state
         prizePool.lastWinnerClaim = uint32(block.timestamp);
@@ -561,7 +617,7 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
                     abi.encodePacked(block.timestamp, block.prevrandao, msg.sender, tokenId, prizePool.lastWinnerClaim)
                 )
             );
-            newColorIndex = uint8(randomSeed % 80); // There are 80 colors in EightyColors
+            newColorIndex = uint8(randomSeed % 7); // There are 7 colors in WarpColors
         } while (newColorIndex == oldColorIndex);
 
         // Update the winning color index
@@ -572,6 +628,65 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
         emit TokenBurned(tokenId, msg.sender);
         emit PrizePoolUpdated(prizePool.totalDeposited);
         emit WinningColorIndexUpdated(newColorIndex);
-        emit WinningColorSet(EightyColors.getColorByIndex(newColorIndex), newColorIndex);
+        emit WinningColorSet(WarpColors.getColorByIndex(newColorIndex), newColorIndex);
+    }
+
+    // ====================== Palette Logic ======================
+
+    /// @dev Initialize a palette of 3 random colors for a newly minted token.
+    ///      Uses packed uint24 RGB values for gas efficiency.
+    function _initPalette(uint256 tokenId, address minter) internal {
+        Palette storage p = _palette[tokenId];
+        if (p.len != 0) return; // already initialised
+        p.len = 3;
+
+        uint256 s = uint256(keccak256(abi.encodePacked(block.prevrandao, tokenId, minter)));
+        // Map random bytes to WarpColors indices (0-6) and then to uint24 values
+        p.colors[0] = _warpColorCode(uint8(s & 0xFF) % 7);
+        p.colors[1] = _warpColorCode(uint8((s >> 8) & 0xFF) % 7);
+        p.colors[2] = _warpColorCode(uint8((s >> 16) & 0xFF) % 7);
+    }
+
+    /// @dev Return the uint24 RGB code for the 7 canonical WarpColors.
+    function _warpColorCode(uint8 index) internal pure returns (uint24) {
+        if (index == 0) return 0xFF007A; // Uniswap Pink
+        if (index == 1) return 0x855DCD; // Farcaster Purple
+        if (index == 2) return 0xFF9900; // Bitcoin Orange
+        if (index == 3) return 0xFFCC00; // IKEA Yellow
+        if (index == 4) return 0x2BDE73; // Kickstarter Green
+        if (index == 5) return 0x00FFFF; // Cyan
+        if (index == 6) return 0xFFFFFF; // White
+        revert("Index out of bounds");
+    }
+
+    /// @dev Update the palette when compositing two tokens.
+    ///      Shrinks from 3 → 2 → 1 colours across the first two composites.
+    function _updatePaletteOnComposite(uint256 keepId, uint256 burnId, uint8 divisorIdx) internal {
+        Palette storage a = _palette[keepId];
+        Palette storage b = _palette[burnId];
+        uint256 r = uint256(keccak256(abi.encodePacked(a.colors[0], b.colors[0], block.prevrandao)));
+
+        if (divisorIdx == 0 && a.len == 3 && b.len == 3) {
+            // First composite → 2 colours (one from each parent)
+            a.colors[0] = a.colors[uint8(r) % 3];
+            a.colors[1] = b.colors[uint8(r >> 8) % 3];
+            a.colors[2] = 0;
+            a.len = 2;
+        } else if (divisorIdx == 1 && a.len == 2 && b.len == 2) {
+            // Second composite → 1 colour (picked from either parent)
+            a.colors[0] = (r & 1) == 0 ? a.colors[uint8(r) % 2] : b.colors[uint8(r >> 8) % 2];
+            a.colors[1] = 0;
+            a.len = 1;
+        }
+    }
+
+    /// @notice Return this token's current palette as a dynamic array.
+    function tokenColors(uint256 id) external view returns (uint24[] memory) {
+        Palette storage p = _palette[id];
+        uint24[] memory out = new uint24[](p.len);
+        for (uint8 i; i < p.len; ++i) {
+            out[i] = p.colors[i];
+        }
+        return out;
     }
 }
