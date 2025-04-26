@@ -451,22 +451,26 @@ contract WarpsTest is Test {
     }
 
     function testGetColorFunctions() public {
-        string memory expectedWinningColor = "2BDE73"; // Kickstarter Green at index 4
-        uint8 expectedWinningIndex = 4; // Correct index for Kickstarter Green
+        string memory expectedWinningColor = "FF9900"; // Bitcoin at index 4
+        uint8 expectedWinningIndex = 4; // Correct index for Bitcoin
 
         assertEq(_warps.getCurrentWinningColor(), expectedWinningColor, "Incorrect current winning color");
         assertEq(_warps.getColorFromIndex(expectedWinningIndex), expectedWinningColor, "Incorrect color from index 4");
         assertEq(
-            _warps.getIndexFromColor(expectedWinningColor), expectedWinningIndex, "Incorrect index from color 2BDE73"
+            _warps.getIndexFromColor(expectedWinningColor), expectedWinningIndex, "Incorrect index from color FF9900"
         );
 
         string memory color0 = "FF007A"; // Uniswap Pink
         assertEq(_warps.getColorFromIndex(0), color0, "Incorrect color for index 0");
         assertEq(_warps.getIndexFromColor(color0), 0, "Incorrect index for color FF007A");
 
-        string memory color6 = "FFFFFF"; // White - Last color in the array
+        string memory color6 = "ffc836"; // McDonalds
         assertEq(_warps.getColorFromIndex(6), color6, "Incorrect color for index 6");
-        assertEq(_warps.getIndexFromColor(color6), 6, "Incorrect index for color FFFFFF");
+        assertEq(_warps.getIndexFromColor(color6), 6, "Incorrect index for color ffc836");
+
+        string memory color9 = "1da1f2"; // Twitter
+        assertEq(_warps.getColorFromIndex(9), color9, "Incorrect color for index 9");
+        assertEq(_warps.getIndexFromColor(color9), 9, "Incorrect index for color 1da1f2");
 
         vm.expectRevert("Color not found");
         _warps.getIndexFromColor("123456");

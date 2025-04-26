@@ -102,7 +102,7 @@ library WarpsArt {
         // If we're a composited warp, we choose colors only based on
         // the slots available in our parents. Otherwise,
         // we choose based on our available spectrum.
-        uint256 possibleColorChoices = divisorIndex > 0 ? divisors_[divisorIndex - 1] * 2 : 7;
+        uint256 possibleColorChoices = divisorIndex > 0 ? divisors_[divisorIndex - 1] * 2 : 10;
 
         // We initialize our index and select the first color
         uint256[] memory indexes = new uint256[](warpsCount);
@@ -114,7 +114,7 @@ library WarpsArt {
                 // If we're a gradient warp, we select based on the color band looping around
                 // the 20 possible colors
                 for (uint256 i = 1; i < warpsCount;) {
-                    indexes[i] = (indexes[0] + (i * gradient * colorBand / warpsCount) % colorBand) % 7;
+                    indexes[i] = (indexes[0] + (i * gradient * colorBand / warpsCount) % colorBand) % 10;
                     unchecked {
                         ++i;
                     }
@@ -123,7 +123,7 @@ library WarpsArt {
                 // If we select initial non gradient colors, we just take random ones
                 // available in our color band
                 for (uint256 i = 1; i < warpsCount;) {
-                    indexes[i] = (indexes[0] + Utilities.random(seed + i, colorBand)) % 7;
+                    indexes[i] = (indexes[0] + Utilities.random(seed + i, colorBand)) % 10;
                     unchecked {
                         ++i;
                     }
@@ -170,7 +170,7 @@ library WarpsArt {
             } else {
                 // If we have a gradient we base the remaining colors off our initial selection
                 for (uint256 i = 1; i < warpsCount;) {
-                    indexes[i] = (indexes[0] + (i * gradient * colorBand / warpsCount) % colorBand) % 7;
+                    indexes[i] = (indexes[0] + (i * gradient * colorBand / warpsCount) % colorBand) % 10;
 
                     unchecked {
                         ++i;
@@ -204,7 +204,7 @@ library WarpsArt {
 
         // Map over to get the colors.
         string[] memory warpColors = new string[](indexes.length);
-        string[7] memory allColors = WarpColors.colors();
+        string[10] memory allColors = WarpColors.colors();
 
         // Always set the first color.
         warpColors[0] = allColors[indexes[0]];

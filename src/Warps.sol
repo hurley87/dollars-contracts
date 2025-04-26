@@ -548,16 +548,16 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
     }
 
     /// @notice Update the winning color index
-    /// @param newIndex The new index (0-6) for the winning color
+    /// @param newIndex The new index (0-9) for the winning color
     function updateWinningColorIndex(uint8 newIndex) external onlyOwner {
-        require(newIndex < 7, "Index must be < 7");
+        require(newIndex < 10, "Index must be < 10");
         winningColorIndex = newIndex;
         emit WinningColorIndexUpdated(newIndex);
     }
 
     /// @notice Set the winning color by providing a hex color code
     /// @param colorHex The hex string of the color (e.g., "FFA000")
-    /// @dev The color must be one of the 7 predefined colors in WarpColors
+    /// @dev The color must be one of the 10 predefined colors in WarpColors
     function setWinningColor(string memory colorHex) external onlyOwner {
         uint8 colorIndex = WarpColors.getIndexByColor(colorHex);
         winningColorIndex = colorIndex;
@@ -617,7 +617,7 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
                     abi.encodePacked(block.timestamp, block.prevrandao, msg.sender, tokenId, prizePool.lastWinnerClaim)
                 )
             );
-            newColorIndex = uint8(randomSeed % 7); // There are 7 colors in WarpColors
+            newColorIndex = uint8(randomSeed % 10); // There are 10 colors in WarpColors
         } while (newColorIndex == oldColorIndex);
 
         // Update the winning color index
@@ -641,21 +641,24 @@ contract Warps is IWarps, WARPS721, Ownable, Pausable {
         p.len = 3;
 
         uint256 s = uint256(keccak256(abi.encodePacked(block.prevrandao, tokenId, minter)));
-        // Map random bytes to WarpColors indices (0-6) and then to uint24 values
-        p.colors[0] = _warpColorCode(uint8(s & 0xFF) % 7);
-        p.colors[1] = _warpColorCode(uint8((s >> 8) & 0xFF) % 7);
-        p.colors[2] = _warpColorCode(uint8((s >> 16) & 0xFF) % 7);
+        // Map random bytes to WarpColors indices (0-9) and then to uint24 values
+        p.colors[0] = _warpColorCode(uint8(s & 0xFF) % 10);
+        p.colors[1] = _warpColorCode(uint8((s >> 8) & 0xFF) % 10);
+        p.colors[2] = _warpColorCode(uint8((s >> 16) & 0xFF) % 10);
     }
 
-    /// @dev Return the uint24 RGB code for the 7 canonical WarpColors.
+    /// @dev Return the uint24 RGB code for the 10 canonical WarpColors.
     function _warpColorCode(uint8 index) internal pure returns (uint24) {
-        if (index == 0) return 0xFF007A; // Uniswap Pink
-        if (index == 1) return 0x855DCD; // Farcaster Purple
-        if (index == 2) return 0xFF9900; // Bitcoin Orange
-        if (index == 3) return 0xFFCC00; // IKEA Yellow
-        if (index == 4) return 0x2BDE73; // Kickstarter Green
-        if (index == 5) return 0x00FFFF; // Cyan
-        if (index == 6) return 0xFFFFFF; // White
+        if (index == 0) return 0xFF007A; // Uniswap
+        if (index == 1) return 0x0052FF; // Coinbase
+        if (index == 2) return 0x855DCD; // Farcaster
+        if (index == 3) return 0x472A92; // Warpcast
+        if (index == 4) return 0xFF9900; // Bitcoin
+        if (index == 5) return 0xed1c16; // Coca-cola
+        if (index == 6) return 0xffc836; // McDonalds
+        if (index == 7) return 0x52b043; // XBOX
+        if (index == 8) return 0x00704a; // Starbucks
+        if (index == 9) return 0x1da1f2; // Twitter
         revert("Index out of bounds");
     }
 
